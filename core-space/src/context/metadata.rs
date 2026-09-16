@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use crate::errors::CargoResult;
 use crate::manifest::Manifest;
 
+pub const MANIFEST_FILENAME: &str = "Cargo.toml";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct Space {
     root_path: PathBuf,
@@ -73,6 +75,14 @@ impl Space {
             .find(|package| package.get_name() == name)
     }
 
+    pub fn add_member(&mut self, pkg_id: PkgId) {
+        self.members.get_or_insert_with(Vec::new).push(pkg_id);
+    }
+
+    pub fn add_members(&mut self, pkg_ids: Vec<PkgId>) {
+        self.members.get_or_insert_with(Vec::new).extend(pkg_ids);
+    }
+
     pub fn is_virtual_workspace(&self) -> bool {
         self.root_pkg_id.is_none()
     }
@@ -91,7 +101,7 @@ impl Space {
 impl Space {
     pub fn from_metadata(metadata: &cargo_metadata::Metadata) -> Self {
         let root_path = PathBuf::from(metadata.workspace_root.as_std_path());
-        let root_manifest_path = root_path.join("Cargo.toml");
+        let root_manifest_path = root_path.join(MANIFEST_FILENAME);
 
         let root_pkg_id = metadata
             .root_package()

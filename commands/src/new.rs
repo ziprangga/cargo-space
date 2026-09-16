@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use core_space::CargoResult;
 use core_space::bail_out;
 use core_space::config::Edition;
-// use core_space::config::Package;
 use core_space::config::PackageItems;
 use core_space::config::Workspace;
 use core_space::context::Change;
@@ -13,13 +12,10 @@ use core_space::context::Context;
 use core_space::context::Modifier;
 use core_space::context::TargetWriter;
 use core_space::context::Writer;
-use core_space::context::metadata::Space;
 use core_space::manifest::InheritMode;
 use core_space::manifest::TablePath;
 use core_space::vcs::GitRepo;
 use core_space::vcs::IgnoreList;
-
-const MANIFEST_FILENAME: &str = "Cargo.toml";
 
 #[derive(Debug)]
 pub struct NewOptions {
@@ -53,13 +49,9 @@ impl NewOptions {
 
         let space_item = workspace.to_toml();
 
-        let ctx = Context::new().with_space(
-            Space::new()
-                .with_root_path(&path)
-                .with_root_manifest_path(&path.join(MANIFEST_FILENAME)),
-        );
+        let mut ctx = Context::new().with_new_space_from(&path);
 
-        let ctx = ctx.with_modifier(
+        ctx = ctx.add_modifier(
             Modifier::insert_items(
                 Change::new()
                     .with_path(TablePath::new().push("workspace"))
@@ -67,13 +59,13 @@ impl NewOptions {
                 InheritMode::None,
             ),
             TargetWriter::Space,
-        )?;
+        );
 
-        let ctx = if self.non_virtual {
+        if self.non_virtual {
             let pkg_items = package_items.to_toml();
             build_non_virtual_src(&path)?;
 
-            let ctx = ctx.with_modifier(
+            ctx = ctx.add_modifier(
                 Modifier::add_key(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
@@ -82,9 +74,9 @@ impl NewOptions {
                     InheritMode::None,
                 ),
                 TargetWriter::space(),
-            )?;
+            );
 
-            ctx.with_modifier(
+            ctx = ctx.add_modifier(
                 Modifier::insert_items(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
@@ -92,10 +84,8 @@ impl NewOptions {
                     InheritMode::Full,
                 ),
                 TargetWriter::Space,
-            )?
-        } else {
-            ctx
-        };
+            )
+        }
 
         Writer::write(&ctx)?;
 

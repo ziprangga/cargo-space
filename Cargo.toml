@@ -1,6 +1,6 @@
 
 [workspace]
-members = ["core-space", "commands"]
+members = ["core-space", "commands", ]
 resolver = "3"
 
 [workspace.package]

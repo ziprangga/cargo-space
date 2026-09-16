@@ -44,7 +44,7 @@ impl TargetWriter {
 #[derive(Debug, Clone, Default)]
 pub struct TargetToml {
     target: TargetWriter,
-    modifier: Modifier,
+    modifiers: Vec<Modifier>,
 }
 
 impl TargetToml {
@@ -57,8 +57,8 @@ impl TargetToml {
         self
     }
 
-    pub fn with_modifier(mut self, modifier: Modifier) -> Self {
-        self.modifier = modifier;
+    pub fn with_modifiers(mut self, modifiers: &[Modifier]) -> Self {
+        self.modifiers = modifiers.to_vec();
         self
     }
 
@@ -66,7 +66,11 @@ impl TargetToml {
         &self.target
     }
 
-    pub fn get_modifier(&self) -> &Modifier {
-        &self.modifier
+    pub fn get_modifiers(&self) -> &[Modifier] {
+        &self.modifiers
+    }
+
+    pub fn add_modifier(&mut self, modifier: &Modifier) {
+        self.modifiers.push(modifier.clone());
     }
 }
