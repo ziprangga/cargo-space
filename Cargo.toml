@@ -1,0 +1,53 @@
+
+[workspace]
+members = ["core-space", "commands"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ziprangga/cargo-space"
+
+
+[workspace.dependencies]
+core-space = { path = "core-space" }
+commands = { path = "commands" }
+# ----------------------------------------
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive", "wrap_help"] }
+toml_edit = "0.25"
+git2 = "0.21"
+url = "2.5"
+dirs-next = "2.0"
+crates-index = "3.14"
+reqwest = { version = "0.13", features = ["blocking"] }
+semver = { version = "1.0", features = ["serde"] }
+rustc-hash = "2.1"
+indexmap = "2.13"
+cargo_metadata = "0.23"
+tempfile = "3.27"
+
+# ======package=======
+[package]
+name = "cargo-space"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+
+[dependencies]
+commands.workspace = true
+core-space.workspace = true
+clap.workspace = true
+
+# ======profile=======
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+lto = false
+codegen-units = 16
