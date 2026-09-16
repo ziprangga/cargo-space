@@ -10,7 +10,7 @@ use core_space::config::Workspace;
 use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::Modifier;
-use core_space::context::TargetWriter;
+use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::TablePath;
@@ -58,7 +58,7 @@ impl NewOptions {
                     .with_item(space_item),
                 InheritMode::None,
             ),
-            TargetWriter::Space,
+            Target::Space,
         );
 
         if self.non_virtual {
@@ -73,7 +73,7 @@ impl NewOptions {
                         .with_item(self.name.as_str().into()),
                     InheritMode::None,
                 ),
-                TargetWriter::space(),
+                Target::space(),
             );
 
             ctx = ctx.add_modifier(
@@ -83,7 +83,7 @@ impl NewOptions {
                         .with_item(pkg_items),
                     InheritMode::Full,
                 ),
-                TargetWriter::Space,
+                Target::Space,
             )
         }
 

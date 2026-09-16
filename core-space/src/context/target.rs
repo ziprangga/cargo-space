@@ -1,14 +1,14 @@
 use super::Modifier;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum TargetWriter {
+#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
+pub enum Target {
     Space,
     Pkg(String),
     #[default]
     None,
 }
 
-impl TargetWriter {
+impl Target {
     pub fn space() -> Self {
         Self::Space
     }
@@ -42,17 +42,17 @@ impl TargetWriter {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct TargetToml {
-    target: TargetWriter,
+pub struct TargetConfig {
+    target: Target,
     modifiers: Vec<Modifier>,
 }
 
-impl TargetToml {
+impl TargetConfig {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn with_target(mut self, target: TargetWriter) -> Self {
+    pub fn with_target(mut self, target: Target) -> Self {
         self.target = target;
         self
     }
@@ -62,7 +62,7 @@ impl TargetToml {
         self
     }
 
-    pub fn get_target(&self) -> &TargetWriter {
+    pub fn get_target(&self) -> &Target {
         &self.target
     }
 

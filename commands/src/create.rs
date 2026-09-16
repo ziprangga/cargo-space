@@ -9,7 +9,7 @@ use core_space::config::Source;
 use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::Modifier;
-use core_space::context::TargetWriter;
+use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::Item;
@@ -97,7 +97,7 @@ impl CreatePackageOption {
                     .with_item(name.clone().into()),
                 InheritMode::None,
             ),
-            TargetWriter::pkg(name.clone()),
+            Target::pkg(name.clone()),
         );
 
         if self.non_inherit {
@@ -114,7 +114,7 @@ impl CreatePackageOption {
                         .with_item(pkg_items),
                     InheritMode::None,
                 ),
-                TargetWriter::pkg(name.clone()),
+                Target::pkg(name.clone()),
             )
         } else {
             let pkg_items = get_workspace_pkg_item(&space_manifest)?;
@@ -126,7 +126,7 @@ impl CreatePackageOption {
                         .with_item(pkg_items.clone()),
                     InheritMode::Full,
                 ),
-                TargetWriter::pkg(name.clone()),
+                Target::pkg(name.clone()),
             )
         };
 
@@ -158,7 +158,7 @@ impl CreatePackageOption {
                         .with_item(item_inline),
                     InheritMode::None,
                 ),
-                TargetWriter::space(),
+                Target::space(),
             );
         }
 
@@ -169,7 +169,7 @@ impl CreatePackageOption {
                     .with_key("members")
                     .with_item(member_path.into()),
             ),
-            TargetWriter::space(),
+            Target::space(),
         );
 
         Writer::write(&ctx)?;

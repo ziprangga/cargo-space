@@ -1,24 +1,26 @@
 mod metadata;
 mod modifier;
-mod write_target;
+mod target;
 
 pub use metadata::MANIFEST_FILENAME;
 pub use metadata::PkgId;
 pub use metadata::Space;
 pub use modifier::Change;
 pub use modifier::Modifier;
-pub use write_target::TargetToml;
-pub use write_target::TargetWriter;
+pub use target::Target;
+pub use target::TargetConfig;
 
 use crate::errors::CargoResult;
 use crate::manifest::Manifest;
+use crate::utility::IndexMap;
+use crate::utility::index_map;
 
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {
     space: Space,
-    target_toml: Vec<TargetToml>,
+    target_configs: Vec<TargetConfig>,
 }
 
 impl Context {
@@ -65,8 +67,8 @@ impl Context {
         self
     }
 
-    pub fn with_target_toml(mut self, target_toml: TargetToml) -> Self {
-        self.target_toml.push(target_toml);
+    pub fn with_target_configs(mut self, target_config: TargetConfig) -> Self {
+        self.target_configs.push(target_config);
         self
     }
 
@@ -78,42 +80,42 @@ impl Context {
         self.space.get_pkg_id(name).expect("package not found")
     }
 
-    pub fn get_target_tomls(&self) -> &[TargetToml] {
-        &self.target_toml
+    pub fn get_target_configs(&self) -> &[TargetConfig] {
+        &self.target_configs
     }
 
-    pub fn add_modifier(mut self, modifier: Modifier, target: TargetWriter) -> Self {
+    pub fn add_modifier(mut self, modifier: Modifier, target: Target) -> Self {
         let is_virtual_space = self.space.is_virtual_workspace();
 
         match target {
-            TargetWriter::Space => {
-                let mut target_toml = TargetToml::new().with_target(TargetWriter::Space);
-                target_toml.add_modifier(&modifier);
-                self.target_toml.push(target_toml);
+            Target::Space => {
+                let mut target_config = TargetConfig::new().with_target(Target::Space);
+                target_config.add_modifier(&modifier);
+                self.target_configs.push(target_config);
             }
 
-            TargetWriter::Pkg(pkg_name) => {
+            Target::Pkg(pkg_name) => {
                 let pkg_id = self.get_pkg_id_by_name(&pkg_name);
                 let is_root_pkg = self.space.is_root_pkg(&pkg_id);
 
                 if is_virtual_space {
-                    let mut pkg = TargetToml::new().with_target(TargetWriter::Pkg(pkg_name));
+                    let mut pkg = TargetConfig::new().with_target(Target::Pkg(pkg_name));
                     pkg.add_modifier(&modifier);
-                    self.target_toml.push(pkg);
+                    self.target_configs.push(pkg);
                 } else {
                     if is_root_pkg {
-                        let mut space = TargetToml::new().with_target(TargetWriter::Space);
+                        let mut space = TargetConfig::new().with_target(Target::Space);
                         space.add_modifier(&modifier);
-                        self.target_toml.push(space);
+                        self.target_configs.push(space);
                     } else {
-                        let mut pkg = TargetToml::new().with_target(TargetWriter::Pkg(pkg_name));
+                        let mut pkg = TargetConfig::new().with_target(Target::Pkg(pkg_name));
                         pkg.add_modifier(&modifier);
-                        self.target_toml.push(pkg);
+                        self.target_configs.push(pkg);
                     }
                 }
             }
 
-            TargetWriter::None => {}
+            Target::None => {}
         }
 
         self
@@ -125,54 +127,46 @@ pub struct Writer;
 
 impl Writer {
     pub fn write(ctx: &Context) -> CargoResult<()> {
-        let mut manifests: Vec<(PathBuf, Manifest)> = Vec::new();
+        let mut manifests: IndexMap<PathBuf, Manifest> = index_map();
 
-        for target_toml in ctx.get_target_tomls() {
-            let path = match target_toml.get_target() {
-                TargetWriter::Space => ctx.get_space().get_root_manifest_path().to_path_buf(),
+        for target_config in ctx.get_target_configs() {
+            let path = match target_config.get_target() {
+                Target::Space => ctx.get_space().get_root_manifest_path().to_path_buf(),
 
-                TargetWriter::Pkg(pkg_name) => ctx
+                Target::Pkg(pkg_name) => ctx
                     .get_pkg_id_by_name(pkg_name)
                     .get_manifest_path()
                     .to_path_buf(),
 
-                TargetWriter::None => continue,
+                Target::None => continue,
             };
 
-            let index = manifests
-                .iter()
-                .position(|(manifest_path, _)| *manifest_path == path);
-
-            let index = match index {
-                Some(index) => index,
-                None => {
-                    let manifest = match target_toml.get_target() {
-                        TargetWriter::Space => {
-                            if path.exists() {
-                                ctx.get_space().load_space_manifest()?
-                            } else {
-                                Manifest::new(&path)
-                            }
+            if !manifests.contains_key(&path) {
+                let manifest = match target_config.get_target() {
+                    Target::Space => {
+                        if path.exists() {
+                            ctx.get_space().load_space_manifest()?
+                        } else {
+                            Manifest::new(&path)
                         }
-                        TargetWriter::Pkg(pkg_name) => {
-                            let pkg_id = ctx.get_pkg_id_by_name(pkg_name);
+                    }
+                    Target::Pkg(pkg_name) => {
+                        let pkg_id = ctx.get_pkg_id_by_name(pkg_name);
 
-                            if path.exists() {
-                                pkg_id.load_pkg_manifest()?
-                            } else {
-                                Manifest::new(&path)
-                            }
+                        if path.exists() {
+                            pkg_id.load_pkg_manifest()?
+                        } else {
+                            Manifest::new(&path)
                         }
-                        TargetWriter::None => continue,
-                    };
+                    }
+                    Target::None => continue,
+                };
 
-                    manifests.push((path.clone(), manifest));
-                    manifests.len() - 1
-                }
-            };
+                manifests.insert(path.clone(), manifest);
+            }
 
-            for modifier in target_toml.get_modifiers() {
-                modifier.apply(&mut manifests[index].1)?;
+            for modifier in target_config.get_modifiers() {
+                modifier.apply(manifests.get_mut(&path).expect("manifest must exist"))?;
             }
         }
 
