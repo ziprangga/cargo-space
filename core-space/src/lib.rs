@@ -20,3 +20,4 @@ pub use utility::HashSet;
 pub use utility::IndexMap;
 pub use utility::IndexSet;
 pub use utility::index_map;
+pub use utility::index_set;

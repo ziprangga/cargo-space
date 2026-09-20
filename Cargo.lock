@@ -321,6 +321,7 @@ dependencies = [
  "reqwest",
  "rustc-hash",
  "semver",
+ "tempfile",
  "toml_edit",
  "url",
 ]

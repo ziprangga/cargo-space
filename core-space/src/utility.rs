@@ -7,3 +7,7 @@ pub type IndexSet<V> = indexmap::IndexSet<V, rustc_hash::FxBuildHasher>;
 pub fn index_map<K, V>() -> IndexMap<K, V> {
     IndexMap::with_hasher(rustc_hash::FxBuildHasher::default())
 }
+
+pub fn index_set<V>() -> IndexSet<V> {
+    IndexSet::with_hasher(rustc_hash::FxBuildHasher::default())
+}

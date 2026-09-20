@@ -3,16 +3,19 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::errors::CargoResult;
+use crate::errors::error;
 use crate::manifest::Manifest;
 
 pub const MANIFEST_FILENAME: &str = "Cargo.toml";
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Space {
     root_path: PathBuf,
     root_manifest_path: PathBuf,
     root_pkg_id: Option<PkgId>,
     members: Option<Vec<PkgId>>,
+
+    manifest: Option<Manifest>,
 }
 
 impl Space {
@@ -75,6 +78,19 @@ impl Space {
             .find(|package| package.get_name() == name)
     }
 
+    pub fn get_pkg_id_mut(&mut self, name: &str) -> Option<&mut PkgId> {
+        if let Some(package) = &mut self.root_pkg_id {
+            if package.get_name() == name {
+                return Some(package);
+            }
+        }
+
+        self.members
+            .as_mut()?
+            .iter_mut()
+            .find(|package| package.get_name() == name)
+    }
+
     pub fn add_member(&mut self, pkg_id: PkgId) {
         self.members.get_or_insert_with(Vec::new).push(pkg_id);
     }
@@ -89,12 +105,6 @@ impl Space {
 
     pub fn is_root_pkg(&self, pkg_id: &PkgId) -> bool {
         self.root_pkg_id.as_ref() == Some(pkg_id)
-    }
-
-    pub fn load_space_manifest(&self) -> CargoResult<Manifest> {
-        let manifest_path = self.get_root_manifest_path();
-        let manifest = Manifest::from_toml_path(manifest_path)?;
-        Ok(manifest)
     }
 }
 
@@ -123,16 +133,76 @@ impl Space {
             root_manifest_path,
             root_pkg_id,
             members: Some(members),
+            manifest: None,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+impl Space {
+    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
+    pub fn get_manifest(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
+    }
+
+    pub fn get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
+        if self.manifest.is_none() {
+            if !self.root_manifest_path.exists() {
+                return Err(error!(
+                    "manifest file not found: {}",
+                    self.root_manifest_path.display()
+                ));
+            }
+
+            let manifest = Manifest::from_toml_path(&self.root_manifest_path)?;
+            self.manifest = Some(manifest)
+        }
+
+        self.manifest
+            .as_mut()
+            .ok_or_else(|| error!("manifest not found"))
+    }
+
+    pub fn add_manifest(&mut self, manifest: Manifest) {
+        self.manifest = Some(manifest)
+    }
+
+    pub fn is_manifest_exist(&self) -> bool {
+        self.manifest.is_some()
+    }
+}
+
+impl PartialEq for Space {
+    fn eq(&self, other: &Self) -> bool {
+        self.root_path == other.root_path
+            && self.root_manifest_path == other.root_manifest_path
+            && self.root_pkg_id == other.root_pkg_id
+            && self.members == other.members
+    }
+}
+
+impl std::hash::Hash for Space {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.root_path.hash(state);
+        self.root_manifest_path.hash(state);
+        self.root_pkg_id.hash(state);
+        self.members.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct PkgId {
     name: String,
     path: PathBuf,
     manifest_path: PathBuf,
     workspace_path: Option<PathBuf>,
+
+    manifest: Option<Manifest>,
 }
 
 impl PkgId {
@@ -175,12 +245,6 @@ impl PkgId {
     pub fn get_workspace_path(&self) -> Option<&Path> {
         self.workspace_path.as_deref()
     }
-
-    pub fn load_pkg_manifest(&self) -> CargoResult<Manifest> {
-        let manifest_path = self.get_manifest_path();
-        let manifest = Manifest::from_toml_path(manifest_path)?;
-        Ok(manifest)
-    }
 }
 
 impl PkgId {
@@ -196,6 +260,64 @@ impl PkgId {
             path,
             manifest_path,
             workspace_path: Some(workspace_root.to_path_buf()),
+            manifest: None,
         }
+    }
+}
+
+impl PkgId {
+    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
+    pub fn get_manifest(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
+    }
+
+    pub fn get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
+        if self.manifest.is_none() {
+            if !self.manifest_path.exists() {
+                return Err(error!(
+                    "manifest file not found: {}",
+                    self.manifest_path.display()
+                ));
+            }
+
+            let manifest = Manifest::from_toml_path(&self.manifest_path)?;
+            self.manifest = Some(manifest)
+        }
+
+        self.manifest
+            .as_mut()
+            .ok_or_else(|| error!("manifest not found"))
+    }
+
+    pub fn add_manifest(&mut self, manifest: Manifest) {
+        self.manifest = Some(manifest)
+    }
+
+    pub fn is_manifest_exist(&self) -> bool {
+        self.manifest.is_some()
+    }
+}
+
+impl PartialEq for PkgId {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+            && self.path == other.path
+            && self.manifest_path == other.manifest_path
+            && self.workspace_path == other.workspace_path
+    }
+}
+
+impl std::hash::Hash for PkgId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.path.hash(state);
+        self.manifest_path.hash(state);
+        self.workspace_path.hash(state);
     }
 }

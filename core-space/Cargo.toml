@@ -19,3 +19,7 @@ semver.workspace = true
 rustc-hash.workspace = true
 indexmap.workspace = true
 cargo_metadata.workspace = true
+
+
+[dev-dependencies]
+tempfile.workspace = true

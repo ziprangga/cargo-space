@@ -44,6 +44,10 @@ impl TomlManifest {
         Ok(Self { data })
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
     /// Returns an immutable reference to the underlying TOML document.
     pub fn data(&self) -> &DocMut {
         &self.data

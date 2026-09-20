@@ -1,6 +1,6 @@
 use super::Modifier;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Target {
     Space,
     Pkg(String),

@@ -9,10 +9,13 @@ use core_space::config::PackageItems;
 use core_space::config::Workspace;
 use core_space::context::Change;
 use core_space::context::Context;
+use core_space::context::MANIFEST_FILENAME;
 use core_space::context::Modifier;
+use core_space::context::Space;
 use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
+use core_space::manifest::Manifest;
 use core_space::manifest::TablePath;
 use core_space::vcs::GitRepo;
 use core_space::vcs::IgnoreList;
@@ -47,9 +50,16 @@ impl NewOptions {
             .with_resolver(default_resolver)
             .with_package_items(&package_items);
 
-        let space_item = workspace.to_toml();
+        let space_manifest_path = path.join(MANIFEST_FILENAME);
+        let space_manifest = Manifest::new(space_manifest_path.clone());
+        let space = Space::new()
+            .with_root_path(&path)
+            .with_root_manifest_path(space_manifest_path)
+            .with_manifest(space_manifest);
 
-        let mut ctx = Context::new().with_new_space_from(&path);
+        let mut ctx = Context::new().with_space(space);
+
+        let space_item = workspace.to_toml();
 
         ctx = ctx.add_modifier(
             Modifier::insert_items(
@@ -59,7 +69,7 @@ impl NewOptions {
                 InheritMode::None,
             ),
             Target::Space,
-        );
+        )?;
 
         if self.non_virtual {
             let pkg_items = package_items.to_toml();
@@ -74,7 +84,7 @@ impl NewOptions {
                     InheritMode::None,
                 ),
                 Target::space(),
-            );
+            )?;
 
             ctx = ctx.add_modifier(
                 Modifier::insert_items(
@@ -84,9 +94,10 @@ impl NewOptions {
                     InheritMode::Full,
                 ),
                 Target::Space,
-            )
+            )?
         }
 
+        ctx.apply()?;
         Writer::write(&ctx)?;
 
         version_control(&path, self.non_vcs)?;

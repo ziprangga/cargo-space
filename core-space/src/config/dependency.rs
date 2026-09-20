@@ -9,35 +9,17 @@ use crate::manifest::Table;
 
 use std::path::Path;
 
-pub trait RulesInheritExt {
-    fn is_pkg_only(&self) -> bool;
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum DataInherit {
     Features,
     Optional,
-    Registry,
 }
 
 impl DataInherit {
-    pub const ALL_PKG_ONLY: [DataInherit; 3] = [
-        DataInherit::Features,
-        DataInherit::Optional,
-        DataInherit::Registry,
-    ];
+    pub const ALL_PKG_ONLY: [DataInherit; 2] = [DataInherit::Features, DataInherit::Optional];
 
     fn is_enabled(&self, conditions: &[Self]) -> bool {
         conditions.contains(self)
-    }
-}
-
-impl RulesInheritExt for [DataInherit] {
-    fn is_pkg_only(&self) -> bool {
-        self.len() == DataInherit::ALL_PKG_ONLY.len()
-            && DataInherit::ALL_PKG_ONLY
-                .iter()
-                .all(|condition| self.contains(condition))
     }
 }
 
@@ -46,7 +28,6 @@ impl std::fmt::Display for DataInherit {
         match self {
             Self::Features => "features",
             Self::Optional => "optional",
-            Self::Registry => "registry",
         }
         .fmt(f)
     }
@@ -59,7 +40,6 @@ impl std::str::FromStr for DataInherit {
         match value {
             "features" => Ok(Self::Features),
             "optional" => Ok(Self::Optional),
-            "registry" => Ok(Self::Registry),
             _ => Err(format!(
                 "invalid private mode `{value}`; expected features, optional, or registry"
             )),
@@ -77,6 +57,10 @@ pub enum RulesInherit {
 }
 
 impl RulesInherit {
+    pub fn is_all(&self) -> bool {
+        if let Self::All = self { true } else { false }
+    }
+
     fn conditions(&self) -> Option<&[DataInherit]> {
         match self {
             Self::Choose(conditions) => Some(conditions),
@@ -193,24 +177,12 @@ impl Dependency {
 
     pub fn disjoint(&self, rules: &RulesInherit) -> (Option<Self>, Option<Self>) {
         let conditions = match rules.conditions() {
-            None => return (None, Some(self.clone())),
+            None => return (Some(self.clone()), None),
             Some(conditions) => conditions,
         };
 
         let mut package = self.clone();
         let mut workspace = self.clone();
-
-        if DataInherit::Registry.is_enabled(conditions) {
-            workspace.source = match &self.source {
-                Some(Source::Registry(_)) => None,
-                source => source.clone(),
-            };
-        } else {
-            package.source = match &self.source {
-                Some(Source::Registry(_)) => None,
-                source => source.clone(),
-            };
-        }
 
         if DataInherit::Features.is_enabled(conditions) {
             workspace.features = None;
@@ -224,10 +196,11 @@ impl Dependency {
             package.optional = None;
         }
 
-        if conditions.is_pkg_only() {
-            (Some(package), None)
+        if rules.is_all() {
+            (None, Some(package))
         } else {
-            (Some(package), Some(workspace))
+            package.source = None;
+            (Some(workspace), Some(package))
         }
     }
 }

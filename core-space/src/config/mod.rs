@@ -13,7 +13,6 @@ pub use dep_source::Source;
 pub use dependency::DataInherit;
 pub use dependency::Dependency;
 pub use dependency::RulesInherit;
-pub use dependency::RulesInheritExt;
 pub use edition::Edition;
 pub use edition::Resolver;
 pub use package_items::PackageItems;

@@ -8,7 +8,9 @@ use core_space::config::PackageItems;
 use core_space::config::Source;
 use core_space::context::Change;
 use core_space::context::Context;
+use core_space::context::MANIFEST_FILENAME;
 use core_space::context::Modifier;
+use core_space::context::PkgId;
 use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
@@ -85,20 +87,28 @@ impl CreatePackageOption {
 
         let mut ctx = Context::discover()?;
 
-        ctx = ctx.with_new_pkg_id_from(&name, &path);
+        let pkg_manifest_path = path.join(MANIFEST_FILENAME);
+        let pkg_manifest = Manifest::new(pkg_manifest_path.clone());
+        let pkg_id = PkgId::new()
+            .with_name(name.clone())
+            .with_path(&path)
+            .with_manifest_path(pkg_manifest_path)
+            .with_manifest(pkg_manifest);
 
-        let space_manifest = ctx.get_space().load_space_manifest()?;
+        let pkg_name = pkg_id.get_name().to_owned();
+
+        ctx.get_space_mut().add_member(pkg_id);
 
         ctx = ctx.add_modifier(
             Modifier::add_key(
                 Change::new()
                     .with_path(TablePath::new().push("package"))
                     .with_key("name")
-                    .with_item(name.clone().into()),
+                    .with_item(pkg_name.clone().into()),
                 InheritMode::None,
             ),
-            Target::pkg(name.clone()),
-        );
+            Target::pkg(pkg_name.clone()),
+        )?;
 
         if self.non_inherit {
             let items = PackageItems::new()
@@ -114,21 +124,29 @@ impl CreatePackageOption {
                         .with_item(pkg_items),
                     InheritMode::None,
                 ),
-                Target::pkg(name.clone()),
-            )
+                Target::pkg(pkg_name.clone()),
+            )?
         } else {
-            let pkg_items = get_workspace_pkg_item(&space_manifest)?;
+            let space_manifest = if ctx.get_space().is_manifest_exist() {
+                ctx.get_space().get_manifest()?
+            } else {
+                let manifest_loaded = load_manifest(ctx.get_space().get_root_manifest_path())?;
+                ctx.get_space_mut().add_manifest(manifest_loaded);
+                ctx.get_space().get_manifest()?
+            };
+
+            let pkg_items = get_workspace_pkg_item(&space_manifest)?.clone();
 
             ctx = ctx.add_modifier(
                 Modifier::insert_items(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
-                        .with_item(pkg_items.clone()),
+                        .with_item(pkg_items),
                     InheritMode::Full,
                 ),
-                Target::pkg(name.clone()),
-            )
-        };
+                Target::pkg(pkg_name.clone()),
+            )?;
+        }
 
         let root_path = ctx.get_space().get_root_path();
         let member_path = path
@@ -141,7 +159,7 @@ impl CreatePackageOption {
 
         if self.dep {
             let dependency = Dependency::new()
-                .with_name(name.clone())
+                .with_name(pkg_name.clone())
                 .with_source(Source::path(&member_path));
 
             let item = dependency.to_toml();
@@ -154,12 +172,12 @@ impl CreatePackageOption {
                 Modifier::add_key(
                     Change::new()
                         .with_path(TablePath::new().push("workspace").push("dependencies"))
-                        .with_key(name)
+                        .with_key(pkg_name.clone())
                         .with_item(item_inline),
                     InheritMode::None,
                 ),
                 Target::space(),
-            );
+            )?;
         }
 
         ctx = ctx.add_modifier(
@@ -170,8 +188,9 @@ impl CreatePackageOption {
                     .with_item(member_path.into()),
             ),
             Target::space(),
-        );
+        )?;
 
+        ctx.apply()?;
         Writer::write(&ctx)?;
 
         create_source(path, kind)?;
@@ -197,6 +216,11 @@ fn create_source(path: &Path, kind: NewPackageKind) -> CargoResult<()> {
     }
 
     Ok(())
+}
+
+pub fn load_manifest(manifest_path: &Path) -> CargoResult<Manifest> {
+    let manifest = Manifest::from_toml_path(manifest_path)?;
+    Ok(manifest)
 }
 
 fn get_workspace_pkg_item(manifest: &Manifest) -> CargoResult<&Item> {

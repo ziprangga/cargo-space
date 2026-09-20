@@ -1,6 +1,9 @@
 mod inherit_mode;
+mod man_util;
 mod table_path;
 mod toml_manifest;
+
+use toml_manifest::TomlManifest;
 
 pub use inherit_mode::InheritMode;
 pub use table_path::TablePath;
@@ -10,8 +13,10 @@ pub use toml_manifest::DocMut;
 pub use toml_manifest::InlineTable;
 pub use toml_manifest::Item;
 pub use toml_manifest::Table;
-use toml_manifest::TomlManifest;
 pub use toml_manifest::Value;
+
+pub use man_util::to_inline_table;
+pub use man_util::to_inline_table_item;
 
 use crate::errors::{CargoResult, Context, error};
 use std::path::{Path, PathBuf};
@@ -40,6 +45,10 @@ impl Manifest {
         })
     }
 
+    pub fn toml_path(&self) -> &Path {
+        &self.toml_path
+    }
+
     /// Returns an immutable reference to the underlying TOML document.
     pub fn data(&self) -> &DocMut {
         &self.toml_manifest.data()
@@ -48,6 +57,10 @@ impl Manifest {
     /// Returns a mutable reference to the underlying TOML document.
     pub fn data_mut(&mut self) -> &mut DocMut {
         self.toml_manifest.data_mut()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.toml_manifest.is_empty()
     }
 
     pub fn write(&self) -> CargoResult<()> {
