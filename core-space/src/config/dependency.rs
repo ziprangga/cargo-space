@@ -41,7 +41,7 @@ impl std::str::FromStr for DataInherit {
             "features" => Ok(Self::Features),
             "optional" => Ok(Self::Optional),
             _ => Err(format!(
-                "invalid private mode `{value}`; expected features, optional, or registry"
+                "invalid private mode `{value}`; expected features or optional"
             )),
         }
     }
