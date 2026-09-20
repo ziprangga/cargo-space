@@ -17,7 +17,7 @@ use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::Item;
 use core_space::manifest::TablePath;
-use core_space::manifest::Value;
+use core_space::manifest::into_inline_table_item_if;
 
 use std::path::PathBuf;
 
@@ -54,13 +54,9 @@ impl AddOptions {
                 if let Some(dep) = dependency {
                     let (space_dep_item, pkg_dep_item) = inherit_split(self.private.clone(), &dep)?;
                     if let Some(pkg_item) = pkg_dep_item {
-                        let pkg_item_inline = if self.private.is_all() {
-                            pkg_item
-                        } else {
-                            Item::Value(Value::InlineTable(
-                                pkg_item.as_table().unwrap().clone().into_inline_table(),
-                            ))
-                        };
+                        let pkg_item_inline =
+                            into_inline_table_item_if(self.private.is_all(), pkg_item)?;
+
                         ctx = ctx.add_modifier(
                             Modifier::add_key(
                                 Change::new()
@@ -93,13 +89,8 @@ impl AddOptions {
                 let (space_dep_item, pkg_dep_item) =
                     inherit_split(self.private.clone(), &dependency)?;
                 if let Some(pkg_item) = pkg_dep_item {
-                    let pkg_item_inline = if self.private.is_all() {
-                        pkg_item
-                    } else {
-                        Item::Value(Value::InlineTable(
-                            pkg_item.as_table().unwrap().clone().into_inline_table(),
-                        ))
-                    };
+                    let pkg_item_inline =
+                        into_inline_table_item_if(self.private.is_all(), pkg_item)?;
 
                     ctx = ctx.add_modifier(
                         Modifier::add_key(

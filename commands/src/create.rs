@@ -17,7 +17,7 @@ use core_space::manifest::InheritMode;
 use core_space::manifest::Item;
 use core_space::manifest::Manifest;
 use core_space::manifest::TablePath;
-use core_space::manifest::Value;
+use core_space::manifest::into_inline_table_item;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NewPackageKind {
@@ -164,9 +164,7 @@ impl CreatePackageOption {
 
             let item = dependency.to_toml();
 
-            let item_inline = Item::Value(Value::InlineTable(
-                item.as_table().unwrap().clone().into_inline_table(),
-            ));
+            let item_inline = into_inline_table_item(item)?;
 
             ctx = ctx.add_modifier(
                 Modifier::add_key(
