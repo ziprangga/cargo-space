@@ -55,7 +55,7 @@ impl AddOptions {
                     let (space_dep_item, pkg_dep_item) = inherit_split(self.private.clone(), &dep)?;
                     if let Some(pkg_item) = pkg_dep_item {
                         let pkg_item_inline =
-                            into_inline_table_item_if(self.private.is_all(), pkg_item)?;
+                            into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
 
                         ctx = ctx.add_modifier(
                             Modifier::add_key(
@@ -88,9 +88,10 @@ impl AddOptions {
                 let dependency = self.dep_options.to_dependency(pkg_manifest_path)?;
                 let (space_dep_item, pkg_dep_item) =
                     inherit_split(self.private.clone(), &dependency)?;
+
                 if let Some(pkg_item) = pkg_dep_item {
                     let pkg_item_inline =
-                        into_inline_table_item_if(self.private.is_all(), pkg_item)?;
+                        into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
 
                     ctx = ctx.add_modifier(
                         Modifier::add_key(
