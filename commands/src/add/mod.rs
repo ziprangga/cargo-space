@@ -57,7 +57,7 @@ impl AddOptions {
                         let pkg_item_inline =
                             into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
 
-                        ctx = ctx.add_modifier(
+                        ctx.add_modifier(
                             Modifier::add_key(
                                 Change::new()
                                     .with_path(pkg_dep_table.clone())
@@ -70,7 +70,7 @@ impl AddOptions {
                     }
 
                     if let Some(space_item) = space_dep_item {
-                        ctx = ctx.add_modifier(
+                        ctx.add_modifier(
                             Modifier::add_key(
                                 Change::new()
                                     .with_path(space_dep_table.clone())
@@ -93,7 +93,7 @@ impl AddOptions {
                     let pkg_item_inline =
                         into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
 
-                    ctx = ctx.add_modifier(
+                    ctx.add_modifier(
                         Modifier::add_key(
                             Change::new()
                                 .with_path(pkg_dep_table.clone())
@@ -106,7 +106,7 @@ impl AddOptions {
                 }
 
                 if let Some(space_item) = space_dep_item {
-                    ctx = ctx.add_modifier(
+                    ctx.add_modifier(
                         Modifier::add_key(
                             Change::new()
                                 .with_path(space_dep_table.clone())
@@ -124,7 +124,7 @@ impl AddOptions {
             let space_manifest_path = ctx.get_space().get_root_manifest_path();
             let dependency = self.dep_options.to_dependency(space_manifest_path)?;
 
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::add_key(
                     Change::new()
                         .with_path(space_dep_table)
@@ -145,7 +145,7 @@ impl AddOptions {
 
 fn dep_from_space(ctx: &mut Context, dep_name: &str) -> CargoResult<Option<Item>> {
     let dep_table = TablePath::new().push("workspace").push("dependencies");
-    let manifest = ctx.get_space_mut().get_manifest_mut()?;
+    let manifest = ctx.get_space_mut().try_get_manifest()?;
     if !manifest.is_key_exist(&dep_table, dep_name) {
         return Ok(None);
     }

@@ -14,7 +14,6 @@ use core_space::context::PkgId;
 use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
-use core_space::manifest::Item;
 use core_space::manifest::Manifest;
 use core_space::manifest::TablePath;
 use core_space::manifest::into_inline_table_item;
@@ -99,7 +98,7 @@ impl CreatePackageOption {
 
         ctx.get_space_mut().add_member(pkg_id);
 
-        ctx = ctx.add_modifier(
+        ctx.add_modifier(
             Modifier::add_key(
                 Change::new()
                     .with_path(TablePath::new().push("package"))
@@ -117,7 +116,7 @@ impl CreatePackageOption {
                 .with_publish(registry);
             let pkg_items = items.to_toml();
 
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::insert_items(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
@@ -127,17 +126,11 @@ impl CreatePackageOption {
                 Target::pkg(pkg_name.clone()),
             )?
         } else {
-            let space_manifest = if ctx.get_space().is_manifest_exist() {
-                ctx.get_space().get_manifest()?
-            } else {
-                let manifest_loaded = load_manifest(ctx.get_space().get_root_manifest_path())?;
-                ctx.get_space_mut().add_manifest(manifest_loaded);
-                ctx.get_space().get_manifest()?
-            };
+            let space_manifest = ctx.get_space_mut().try_get_manifest()?;
+            let table_path = TablePath::new().push("workspace").push("package");
+            let pkg_items = space_manifest.get_item_of_table(&table_path)?.clone();
 
-            let pkg_items = get_workspace_pkg_item(&space_manifest)?.clone();
-
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::insert_items(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
@@ -166,7 +159,7 @@ impl CreatePackageOption {
 
             let item_inline = into_inline_table_item(item)?;
 
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::add_key(
                     Change::new()
                         .with_path(TablePath::new().push("workspace").push("dependencies"))
@@ -178,7 +171,7 @@ impl CreatePackageOption {
             )?;
         }
 
-        ctx = ctx.add_modifier(
+        ctx.add_modifier(
             Modifier::update_value(
                 Change::new()
                     .with_path(TablePath::new().push("workspace"))
@@ -214,18 +207,6 @@ fn create_source(path: &Path, kind: NewPackageKind) -> CargoResult<()> {
     }
 
     Ok(())
-}
-
-pub fn load_manifest(manifest_path: &Path) -> CargoResult<Manifest> {
-    let manifest = Manifest::from_toml_path(manifest_path)?;
-    Ok(manifest)
-}
-
-fn get_workspace_pkg_item(manifest: &Manifest) -> CargoResult<&Item> {
-    let table_path = TablePath::new().push("workspace").push("package");
-    let pkg_items = manifest.get_item_of_table(&table_path)?;
-
-    Ok(pkg_items)
 }
 
 pub fn cli_create() -> Command {

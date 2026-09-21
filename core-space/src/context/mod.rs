@@ -71,8 +71,10 @@ impl Context {
     pub fn get_target_configs(&self) -> &[TargetConfig] {
         &self.target_configs
     }
+}
 
-    pub fn add_modifier(mut self, modifier: Modifier, target: Target) -> CargoResult<Self> {
+impl Context {
+    pub fn add_modifier(&mut self, modifier: Modifier, target: Target) -> CargoResult<()> {
         let is_virtual_space = self.space.is_virtual_workspace();
 
         match target {
@@ -106,11 +108,9 @@ impl Context {
             Target::None => {}
         }
 
-        Ok(self)
+        Ok(())
     }
-}
 
-impl Context {
     pub fn apply(&mut self) -> CargoResult<()> {
         let mut targets: IndexMap<Target, Vec<Modifier>> = index_map();
 
@@ -125,7 +125,7 @@ impl Context {
         for (target, modifiers) in targets {
             match target {
                 Target::Space => {
-                    let manifest = self.space.get_manifest_mut()?;
+                    let manifest = self.space.try_get_manifest_mut()?;
 
                     for modifier in modifiers {
                         modifier.apply(manifest)?;
@@ -134,7 +134,7 @@ impl Context {
 
                 Target::Pkg(pkg_name) => {
                     let pkg_id = self.get_pkg_id_mut(&pkg_name)?;
-                    let manifest = pkg_id.get_manifest_mut()?;
+                    let manifest = pkg_id.try_get_manifest_mut()?;
 
                     for modifier in modifiers {
                         modifier.apply(manifest)?;
@@ -149,7 +149,7 @@ impl Context {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Writer;
 
 impl Writer {
@@ -171,14 +171,14 @@ impl Writer {
         }
 
         for path in paths {
-            if path == *ctx.get_space().get_root_manifest_path() {
-                let manifest = ctx.get_space().get_manifest()?;
+            if path == ctx.get_space().get_root_manifest_path() {
+                let manifest = ctx.get_space().manifest_ref()?;
                 manifest.write()?;
             } else {
                 if let Some(members) = ctx.get_space().get_members() {
                     for pkg_id in members {
                         if pkg_id.get_manifest_path() == path {
-                            let manifest = pkg_id.get_manifest()?;
+                            let manifest = pkg_id.manifest_ref()?;
                             manifest.write()?;
 
                             break;
@@ -219,7 +219,7 @@ members = []
             .with_root_manifest_path(&manifest_path)
             .with_manifest(manifest);
 
-        let manifest = space.get_manifest().unwrap();
+        let manifest = space.manifest_ref().unwrap();
 
         assert_eq!(manifest.toml_path(), manifest_path);
     }
@@ -251,7 +251,7 @@ members = []
             .with_manifest_path(&manifest_path)
             .with_manifest(manifest);
 
-        let manifest = pkg_id.get_manifest().unwrap();
+        let manifest = pkg_id.manifest_ref().unwrap();
 
         assert_eq!(manifest.toml_path(), manifest_path);
     }
@@ -268,7 +268,7 @@ members = []
             .with_root_manifest_path(&manifest_path)
             .with_manifest(manifest);
 
-        let manifest = space.get_manifest().unwrap();
+        let manifest = space.manifest_ref().unwrap();
 
         assert_eq!(manifest.toml_path(), manifest_path);
         assert!(!manifest_path.exists());

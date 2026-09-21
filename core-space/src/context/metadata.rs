@@ -144,36 +144,42 @@ impl Space {
         self
     }
 
-    pub fn get_manifest(&self) -> CargoResult<&Manifest> {
+    pub fn try_get_manifest(&mut self) -> CargoResult<&Manifest> {
+        self.try_load_and_cache_manifest()?;
         self.manifest
             .as_ref()
             .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
-        if self.manifest.is_none() {
-            if !self.root_manifest_path.exists() {
-                return Err(error!(
-                    "manifest file not found: {}",
-                    self.root_manifest_path.display()
-                ));
-            }
-
-            let manifest = Manifest::from_toml_path(&self.root_manifest_path)?;
-            self.manifest = Some(manifest)
-        }
-
+    pub fn try_get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
+        self.try_load_and_cache_manifest()?;
         self.manifest
             .as_mut()
             .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn add_manifest(&mut self, manifest: Manifest) {
-        self.manifest = Some(manifest)
+    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn is_manifest_exist(&self) -> bool {
-        self.manifest.is_some()
+    fn try_load_and_cache_manifest(&mut self) -> CargoResult<()> {
+        if self.manifest.is_some() {
+            return Ok(());
+        }
+
+        if !self.root_manifest_path.exists() {
+            return Err(error!(
+                "manifest file not found: {}",
+                self.root_manifest_path.display()
+            ));
+        }
+
+        let manifest = Manifest::from_toml_path(&self.root_manifest_path)?;
+        self.manifest = Some(manifest);
+
+        Ok(())
     }
 }
 
@@ -271,36 +277,43 @@ impl PkgId {
         self
     }
 
-    pub fn get_manifest(&self) -> CargoResult<&Manifest> {
+    pub fn try_get_manifest(&mut self) -> CargoResult<&Manifest> {
+        self.try_load_and_cache_manifest()?;
         self.manifest
             .as_ref()
             .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
-        if self.manifest.is_none() {
-            if !self.manifest_path.exists() {
-                return Err(error!(
-                    "manifest file not found: {}",
-                    self.manifest_path.display()
-                ));
-            }
-
-            let manifest = Manifest::from_toml_path(&self.manifest_path)?;
-            self.manifest = Some(manifest)
-        }
+    pub fn try_get_manifest_mut(&mut self) -> CargoResult<&mut Manifest> {
+        self.try_load_and_cache_manifest()?;
 
         self.manifest
             .as_mut()
             .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn add_manifest(&mut self, manifest: Manifest) {
-        self.manifest = Some(manifest)
+    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
     }
 
-    pub fn is_manifest_exist(&self) -> bool {
-        self.manifest.is_some()
+    fn try_load_and_cache_manifest(&mut self) -> CargoResult<()> {
+        if self.manifest.is_some() {
+            return Ok(());
+        }
+
+        if !self.manifest_path.exists() {
+            return Err(error!(
+                "manifest file not found: {}",
+                self.manifest_path.display()
+            ));
+        }
+
+        let manifest = Manifest::from_toml_path(&self.manifest_path)?;
+        self.manifest = Some(manifest);
+
+        Ok(())
     }
 }
 

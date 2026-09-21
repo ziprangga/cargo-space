@@ -61,7 +61,7 @@ impl NewOptions {
 
         let space_item = workspace.to_toml();
 
-        ctx = ctx.add_modifier(
+        ctx.add_modifier(
             Modifier::insert_items(
                 Change::new()
                     .with_path(TablePath::new().push("workspace"))
@@ -75,7 +75,7 @@ impl NewOptions {
             let pkg_items = package_items.to_toml();
             build_non_virtual_src(&path)?;
 
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::add_key(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
@@ -86,7 +86,7 @@ impl NewOptions {
                 Target::space(),
             )?;
 
-            ctx = ctx.add_modifier(
+            ctx.add_modifier(
                 Modifier::insert_items(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
