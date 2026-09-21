@@ -85,6 +85,20 @@ impl InheritMode {
     }
 }
 
+impl InheritMode {
+    pub fn is_full(&self) -> bool {
+        matches!(self, Self::Full)
+    }
+
+    pub fn is_partial(&self) -> bool {
+        matches!(self, Self::Partial)
+    }
+
+    pub fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
+}
+
 impl From<&str> for InheritMode {
     fn from(value: &str) -> Self {
         match value {

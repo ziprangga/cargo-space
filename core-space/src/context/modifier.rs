@@ -8,7 +8,7 @@ use crate::manifest::TablePath;
 pub enum Modifier {
     AddKey(Change, InheritMode),
 
-    UpdateKey(Change),
+    UpdateKey(Change, InheritMode),
 
     RemoveKeyOrValue(Change),
 
@@ -25,8 +25,8 @@ impl Modifier {
         Self::AddKey(change, mode.into())
     }
 
-    pub fn update_key(change: Change) -> Self {
-        Self::UpdateKey(change)
+    pub fn update_key(change: Change, mode: impl Into<InheritMode>) -> Self {
+        Self::UpdateKey(change, mode.into())
     }
 
     pub fn remove_key_or_value(change: Change) -> Self {
@@ -40,6 +40,7 @@ impl Modifier {
     pub fn insert_items_at(change: Change, mode: impl Into<InheritMode>) -> Self {
         Self::InsertItemsAt(change, mode.into())
     }
+
     pub fn apply(&self, manifest: &mut Manifest) -> CargoResult<()> {
         match self {
             Self::AddKey(change, mode) => {
@@ -56,7 +57,7 @@ impl Modifier {
                 manifest.add_key(change.path(), key, &item_resolve)?;
             }
 
-            Self::UpdateKey(change) => {
+            Self::UpdateKey(change, mode) => {
                 let key = change
                     .key()
                     .ok_or_else(|| error!("Update key requires a key"))?;
@@ -65,7 +66,13 @@ impl Modifier {
                     .item()
                     .ok_or_else(|| error!("Update key requires an item"))?;
 
-                manifest.update_key(change.path(), key, item)?;
+                let item_resolve = if manifest.is_table_inline_table(change.path()) {
+                    item.clone()
+                } else {
+                    mode.resolve_key(key.to_string(), item.clone())?
+                };
+
+                manifest.update_key(change.path(), key, &item_resolve)?;
             }
 
             Self::RemoveKeyOrValue(change) => {
@@ -85,7 +92,13 @@ impl Modifier {
                     .item()
                     .ok_or_else(|| error!("Replace items requires an item"))?;
 
-                let item_resolve = mode.resolve_items(item.clone())?;
+                let item_resolve = if manifest.is_table_inline_table(change.path()) {
+                    item.clone()
+                } else if let Some(key) = change.key() {
+                    mode.resolve_key(key.to_string(), item.clone())?
+                } else {
+                    mode.resolve_items(item.clone())?
+                };
 
                 manifest.replace_items_at(change.path(), change.key(), &item_resolve)?;
             }
@@ -95,7 +108,13 @@ impl Modifier {
                     .item()
                     .ok_or_else(|| error!("Insert items requires an item"))?;
 
-                let item_resolve = mode.resolve_items(item.clone())?;
+                let item_resolve = if manifest.is_table_inline_table(change.path()) {
+                    item.clone()
+                } else if let Some(key) = change.key() {
+                    mode.resolve_key(key.to_string(), item.clone())?
+                } else {
+                    mode.resolve_items(item.clone())?
+                };
 
                 manifest.insert_items_at(change.path(), change.key(), &item_resolve)?;
             }

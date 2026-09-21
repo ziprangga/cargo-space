@@ -90,6 +90,13 @@ impl Manifest {
         self.toml_manifest.get_table_like(table.as_slice()).is_ok()
     }
 
+    pub fn is_table_inline_table(&self, table: &TablePath) -> bool {
+        self.toml_manifest
+            .get_table_like(table.as_slice())
+            .ok()
+            .is_some_and(|table| table.is_inline_table())
+    }
+
     pub fn is_key_exist(&self, table: &TablePath, key: &str) -> bool {
         self.toml_manifest
             .get_table_like(table.as_slice())
