@@ -62,7 +62,7 @@ impl NewOptions {
         let space_item = workspace.to_toml();
 
         ctx.add_modifier(
-            Modifier::insert_items(
+            Modifier::insert_items_at(
                 Change::new()
                     .with_path(TablePath::new().push("workspace"))
                     .with_item(space_item),
@@ -87,7 +87,7 @@ impl NewOptions {
             )?;
 
             ctx.add_modifier(
-                Modifier::insert_items(
+                Modifier::insert_items_at(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
                         .with_item(pkg_items),

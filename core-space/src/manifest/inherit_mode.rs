@@ -13,7 +13,7 @@ pub enum InheritMode {
 }
 
 impl InheritMode {
-    pub fn resolve(&self, key: String, item: Item) -> CargoResult<Item> {
+    pub fn resolve_key(&self, key: String, item: Item) -> CargoResult<Item> {
         match self {
             Self::Full => {
                 let mut dotted = Table::new();
@@ -47,7 +47,7 @@ impl InheritMode {
         }
     }
 
-    pub fn resolve_insert(&self, item: Item) -> CargoResult<Item> {
+    pub fn resolve_items(&self, item: Item) -> CargoResult<Item> {
         match self {
             Self::Full => {
                 let Some(table_like) = item.as_table_like() else {

@@ -117,7 +117,7 @@ impl CreatePackageOption {
             let pkg_items = items.to_toml();
 
             ctx.add_modifier(
-                Modifier::insert_items(
+                Modifier::insert_items_at(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
                         .with_item(pkg_items),
@@ -131,7 +131,7 @@ impl CreatePackageOption {
             let pkg_items = space_manifest.get_item_of_table(&table_path)?.clone();
 
             ctx.add_modifier(
-                Modifier::insert_items(
+                Modifier::insert_items_at(
                     Change::new()
                         .with_path(TablePath::new().push("package"))
                         .with_item(pkg_items),
@@ -172,7 +172,7 @@ impl CreatePackageOption {
         }
 
         ctx.add_modifier(
-            Modifier::update_value(
+            Modifier::update_key(
                 Change::new()
                     .with_path(TablePath::new().push("workspace"))
                     .with_key("members")

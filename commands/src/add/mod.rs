@@ -71,12 +71,11 @@ impl AddOptions {
 
                     if let Some(space_item) = space_dep_item {
                         ctx.add_modifier(
-                            Modifier::add_key(
+                            Modifier::update_key(
                                 Change::new()
                                     .with_path(space_dep_table.clone())
                                     .with_key(crate_name)
                                     .with_item(space_item),
-                                InheritMode::None,
                             ),
                             Target::space(),
                         )?;
@@ -124,12 +123,22 @@ impl AddOptions {
             let space_manifest_path = ctx.get_space().get_root_manifest_path();
             let dependency = self.dep_options.to_dependency(space_manifest_path)?;
 
+            let inline_condition =
+                if self.dep_options.features.is_some() || self.dep_options.optional {
+                    true
+                } else {
+                    false
+                };
+
+            let space_depedency =
+                into_inline_table_item_if(inline_condition, dependency.to_toml())?;
+
             ctx.add_modifier(
                 Modifier::add_key(
                     Change::new()
                         .with_path(space_dep_table)
                         .with_key(crate_name)
-                        .with_item(dependency.to_toml()),
+                        .with_item(space_depedency),
                     InheritMode::None,
                 ),
                 Target::space(),

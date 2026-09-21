@@ -7,11 +7,14 @@ use crate::manifest::TablePath;
 #[derive(Debug, Clone, Default)]
 pub enum Modifier {
     AddKey(Change, InheritMode),
-    UpdateValue(Change),
-    DeleteKey(Change),
-    RemoveValueOfArray(Change),
-    ReplaceValue(Change, InheritMode),
-    InsertItems(Change, InheritMode),
+
+    UpdateKey(Change),
+
+    RemoveKeyOrValue(Change),
+
+    ReplaceItemsAt(Change, InheritMode),
+
+    InsertItemsAt(Change, InheritMode),
 
     #[default]
     None,
@@ -22,59 +25,79 @@ impl Modifier {
         Self::AddKey(change, mode.into())
     }
 
-    pub fn update_value(change: Change) -> Self {
-        Self::UpdateValue(change)
+    pub fn update_key(change: Change) -> Self {
+        Self::UpdateKey(change)
     }
 
-    pub fn delete_key(change: Change) -> Self {
-        Self::DeleteKey(change)
+    pub fn remove_key_or_value(change: Change) -> Self {
+        Self::RemoveKeyOrValue(change)
     }
 
-    pub fn remove_value_from_array(change: Change) -> Self {
-        Self::RemoveValueOfArray(change)
+    pub fn replace_items_at(change: Change, mode: impl Into<InheritMode>) -> Self {
+        Self::ReplaceItemsAt(change, mode.into())
     }
 
-    pub fn replace_value(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::ReplaceValue(change, mode.into())
-    }
-
-    pub fn insert_items(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::InsertItems(change, mode.into())
+    pub fn insert_items_at(change: Change, mode: impl Into<InheritMode>) -> Self {
+        Self::InsertItemsAt(change, mode.into())
     }
     pub fn apply(&self, manifest: &mut Manifest) -> CargoResult<()> {
         match self {
             Self::AddKey(change, mode) => {
-                let item = mode.resolve(change.key().to_string(), change.item().clone())?;
+                let key = change
+                    .key()
+                    .ok_or_else(|| error!("Add key requires a key"))?;
 
-                manifest.add_key(change.path(), change.key(), &item)?;
+                let item = change
+                    .item()
+                    .ok_or_else(|| error!("Add key requires an item"))?;
+
+                let item_resolve = mode.resolve_key(key.to_string(), item.clone())?;
+
+                manifest.add_key(change.path(), key, &item_resolve)?;
             }
-            Self::UpdateValue(change) => {
-                manifest.update_value_of_key(change.path(), change.key(), change.item())?;
+
+            Self::UpdateKey(change) => {
+                let key = change
+                    .key()
+                    .ok_or_else(|| error!("Update key requires a key"))?;
+
+                let item = change
+                    .item()
+                    .ok_or_else(|| error!("Update key requires an item"))?;
+
+                manifest.update_key(change.path(), key, item)?;
             }
-            Self::DeleteKey(change) => {
+
+            Self::RemoveKeyOrValue(change) => {
+                let key = change
+                    .key()
+                    .ok_or_else(|| error!("Remove key or value requires a key"))?;
+
                 if let Some(message) =
-                    manifest.delete_key_from_table(change.path(), change.key())?
+                    manifest.remove_key_or_value(change.path(), key, change.item())?
                 {
                     println!("{message}");
                 }
             }
-            Self::RemoveValueOfArray(change) => {
-                let value = change
+
+            Self::ReplaceItemsAt(change, mode) => {
+                let item = change
                     .item()
-                    .as_str()
-                    .ok_or_else(|| error!("Remove value must be a string"))?;
+                    .ok_or_else(|| error!("Replace items requires an item"))?;
 
-                manifest.remove_value_from_array(change.path(), change.key(), value)?;
+                let item_resolve = mode.resolve_items(item.clone())?;
+
+                manifest.replace_items_at(change.path(), change.key(), &item_resolve)?;
             }
-            Self::ReplaceValue(change, mode) => {
-                let item = mode.resolve(change.key().to_string(), change.item().clone())?;
 
-                manifest.replace_value_of_key(change.path(), change.key(), &item)?;
-            }
-            Self::InsertItems(change, mode) => {
-                let item = mode.resolve_insert(change.item().clone())?;
+            Self::InsertItemsAt(change, mode) => {
+                let item = change
+                    .item()
+                    .ok_or_else(|| error!("Insert items requires an item"))?;
 
-                manifest.insert_items_in_table(change.path(), &item)?;
+                let item_resolve = mode.resolve_items(item.clone())?;
+
+                manifest.insert_items_at(change.path(), change.key(), &item_resolve)?;
             }
 
             Self::None => {}
@@ -87,16 +110,16 @@ impl Modifier {
 #[derive(Debug, Clone)]
 pub struct Change {
     path: TablePath,
-    key: String,
-    item: Item,
+    key: Option<String>,
+    item: Option<Item>,
 }
 
 impl Change {
     pub fn new() -> Self {
         Self {
             path: TablePath::default(),
-            key: String::new(),
-            item: Item::default(),
+            key: None,
+            item: None,
         }
     }
 
@@ -106,12 +129,12 @@ impl Change {
     }
 
     pub fn with_key(mut self, key: impl Into<String>) -> Self {
-        self.key = key.into();
+        self.key = Some(key.into());
         self
     }
 
     pub fn with_item(mut self, item: Item) -> Self {
-        self.item = item;
+        self.item = Some(item);
         self
     }
 
@@ -119,15 +142,15 @@ impl Change {
         &self.path
     }
 
-    pub fn key(&self) -> &str {
-        &self.key
+    pub fn key(&self) -> Option<&str> {
+        self.key.as_deref()
     }
 
-    pub fn item(&self) -> &Item {
-        &self.item
+    pub fn item(&self) -> Option<&Item> {
+        self.item.as_ref()
     }
 
-    pub fn into_parts(self) -> (TablePath, String, Item) {
+    pub fn into_parts(self) -> (TablePath, Option<String>, Option<Item>) {
         (self.path, self.key, self.item)
     }
 }
