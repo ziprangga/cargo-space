@@ -19,12 +19,6 @@ pub struct Space {
 }
 
 impl Space {
-    pub fn discover() -> cargo_metadata::Result<Space> {
-        let metadata = MetadataCommand::new().no_deps().exec()?;
-
-        Ok(Space::from_metadata(&metadata))
-    }
-
     pub fn new() -> Self {
         Self::default()
     }
@@ -78,27 +72,6 @@ impl Space {
             .find(|package| package.get_name() == name)
     }
 
-    pub fn get_pkg_id_mut(&mut self, name: &str) -> Option<&mut PkgId> {
-        if let Some(package) = &mut self.root_pkg_id {
-            if package.get_name() == name {
-                return Some(package);
-            }
-        }
-
-        self.members
-            .as_mut()?
-            .iter_mut()
-            .find(|package| package.get_name() == name)
-    }
-
-    pub fn add_member(&mut self, pkg_id: PkgId) {
-        self.members.get_or_insert_with(Vec::new).push(pkg_id);
-    }
-
-    pub fn add_members(&mut self, pkg_ids: Vec<PkgId>) {
-        self.members.get_or_insert_with(Vec::new).extend(pkg_ids);
-    }
-
     pub fn is_virtual_workspace(&self) -> bool {
         self.root_pkg_id.is_none()
     }
@@ -109,6 +82,12 @@ impl Space {
 }
 
 impl Space {
+    pub fn discover() -> cargo_metadata::Result<Space> {
+        let metadata = MetadataCommand::new().no_deps().exec()?;
+
+        Ok(Space::from_metadata(&metadata))
+    }
+
     pub fn from_metadata(metadata: &cargo_metadata::Metadata) -> Self {
         let root_path = PathBuf::from(metadata.workspace_root.as_std_path());
         let root_manifest_path = root_path.join(MANIFEST_FILENAME);
@@ -135,6 +114,29 @@ impl Space {
             members: Some(members),
             manifest: None,
         }
+    }
+}
+
+impl Space {
+    pub fn get_pkg_id_mut(&mut self, name: &str) -> Option<&mut PkgId> {
+        if let Some(package) = &mut self.root_pkg_id {
+            if package.get_name() == name {
+                return Some(package);
+            }
+        }
+
+        self.members
+            .as_mut()?
+            .iter_mut()
+            .find(|package| package.get_name() == name)
+    }
+
+    pub fn add_member(&mut self, pkg_id: PkgId) {
+        self.members.get_or_insert_with(Vec::new).push(pkg_id);
+    }
+
+    pub fn add_members(&mut self, pkg_ids: Vec<PkgId>) {
+        self.members.get_or_insert_with(Vec::new).extend(pkg_ids);
     }
 }
 
