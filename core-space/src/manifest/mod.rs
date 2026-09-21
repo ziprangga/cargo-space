@@ -115,25 +115,45 @@ impl Manifest {
 }
 
 impl Manifest {
-    pub fn add_key(&mut self, table: &TablePath, key: &str, value: &Item) -> CargoResult<()> {
+    pub fn add_key(
+        &mut self,
+        table: &TablePath,
+        key: &str,
+        value: &Item,
+        inherit_mode: &InheritMode,
+    ) -> CargoResult<()> {
         let table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
 
-        table[key] = value.into();
+        let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
+
+        table[key] = source_item;
 
         Ok(())
     }
 
-    pub fn update_key(&mut self, table: &TablePath, key: &str, value: &Item) -> CargoResult<()> {
-        let item = self
-            .toml_manifest
-            .get_table_like_mut(table.as_slice())?
+    pub fn update_key(
+        &mut self,
+        table: &TablePath,
+        key: &str,
+        value: &Item,
+        inherit_mode: &InheritMode,
+    ) -> CargoResult<()> {
+        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let source_item = if base_table.is_inline_table() {
+            value.clone()
+        } else {
+            inherit_mode.resolve_key(key.to_string(), value.clone())?
+        };
+
+        let target_item = base_table
             .get_mut(key)
             .ok_or_else(|| error!("`{key}` could not be found"))?;
 
-        if let Some(old_array_of_tables) = item.as_array_of_tables_mut() {
-            if let Some(new_table) = value.as_table() {
+        if let Some(old_array_of_tables) = target_item.as_array_of_tables_mut() {
+            if let Some(new_table) = source_item.as_table() {
                 // Target the specific instance inside the array (e.g., index 0)
                 if let Some(first_table) = old_array_of_tables.get_mut(0) {
                     let old_decor = first_table.decor().clone();
@@ -147,8 +167,8 @@ impl Manifest {
                     first_table.set_position(old_position);
                 }
             }
-        } else if let Some(old_table) = item.as_table_mut() {
-            if let Some(new_table) = value.as_table() {
+        } else if let Some(old_table) = target_item.as_table_mut() {
+            if let Some(new_table) = source_item.as_table() {
                 // Keep the old layout decoration (headers, bracket formatting, spacing, comments)
                 let old_decor = old_table.decor().clone();
 
@@ -162,58 +182,64 @@ impl Manifest {
                 *old_table.decor_mut() = old_decor;
                 old_table.set_position(old_position);
             }
-        } else if let Some(old_value) = item.as_value_mut() {
+        } else if let Some(old_value) = target_item.as_value_mut() {
             match old_value {
                 Value::Array(array) => {
-                    if !array.iter().any(|item| item.as_str() == value.as_str()) {
-                        if let Some(new_value) = value.as_value() {
+                    if !array
+                        .iter()
+                        .any(|item| item.as_str() == source_item.as_str())
+                    {
+                        if let Some(new_value) = source_item.as_value() {
                             array.push(new_value);
                         }
                     }
                 }
                 Value::InlineTable(old_inline_table) => {
-                    if let Some(mut new_value) = value.as_value().cloned() {
+                    if let Some(mut new_value) = source_item.as_value().cloned() {
                         let old_decor = old_inline_table.decor().clone();
                         *new_value.decor_mut() = old_decor;
                         *old_value = new_value;
                     }
                 }
                 Value::String(val_string) => {
-                    if value.as_value().and_then(|v| v.as_str()) != Some(val_string.value()) {
-                        if let Some(mut new_value) = value.as_value().cloned() {
+                    if source_item.as_value().and_then(|v| v.as_str()) != Some(val_string.value()) {
+                        if let Some(mut new_value) = source_item.as_value().cloned() {
                             *new_value.decor_mut() = val_string.decor().clone();
                             *old_value = new_value;
                         }
                     }
                 }
                 Value::Integer(val_int) => {
-                    if value.as_value().and_then(|v| v.as_integer()) != Some(*val_int.value()) {
-                        if let Some(mut new_value) = value.as_value().cloned() {
+                    if source_item.as_value().and_then(|v| v.as_integer()) != Some(*val_int.value())
+                    {
+                        if let Some(mut new_value) = source_item.as_value().cloned() {
                             *new_value.decor_mut() = val_int.decor().clone();
                             *old_value = new_value;
                         }
                     }
                 }
                 Value::Float(val_float) => {
-                    if value.as_value().and_then(|v| v.as_float()) != Some(*val_float.value()) {
-                        if let Some(mut new_value) = value.as_value().cloned() {
+                    if source_item.as_value().and_then(|v| v.as_float()) != Some(*val_float.value())
+                    {
+                        if let Some(mut new_value) = source_item.as_value().cloned() {
                             *new_value.decor_mut() = val_float.decor().clone();
                             *old_value = new_value;
                         }
                     }
                 }
                 Value::Boolean(val_bool) => {
-                    if value.as_value().and_then(|v| v.as_bool()) != Some(*val_bool.value()) {
-                        if let Some(mut new_value) = value.as_value().cloned() {
+                    if source_item.as_value().and_then(|v| v.as_bool()) != Some(*val_bool.value()) {
+                        if let Some(mut new_value) = source_item.as_value().cloned() {
                             *new_value.decor_mut() = val_bool.decor().clone();
                             *old_value = new_value;
                         }
                     }
                 }
                 Value::Datetime(val_datetime) => {
-                    if value.as_value().and_then(|v| v.as_datetime()) != Some(val_datetime.value())
+                    if source_item.as_value().and_then(|v| v.as_datetime())
+                        != Some(val_datetime.value())
                     {
-                        if let Some(mut new_value) = value.as_value().cloned() {
+                        if let Some(mut new_value) = source_item.as_value().cloned() {
                             *new_value.decor_mut() = val_datetime.decor().clone();
                             *old_value = new_value;
                         }
@@ -280,14 +306,23 @@ impl Manifest {
         table: &TablePath,
         key: Option<&str>,
         value: &Item,
+        inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
-        let source = value
+        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let source_item = if let Some(k) = key {
+            if base_table.is_inline_table() {
+                value.clone()
+            } else {
+                inherit_mode.resolve_key(k.to_string(), value.clone())?
+            }
+        } else {
+            inherit_mode.resolve_items(value.clone())?
+        };
+
+        let table_like_source = source_item
             .as_table_like()
             .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
-
-        let base_table = self
-            .toml_manifest
-            .get_or_create_table_like_mut(table.as_slice())?;
 
         let target_item = match key {
             Some(key) => base_table
@@ -300,7 +335,7 @@ impl Manifest {
             // Handle Array of Tables: Wipe and replace contents of the targeted instance (e.g., index 0)
             if let Some(target_table) = array_of_tables.get_mut(0) {
                 target_table.clear();
-                for (key, value) in source.iter() {
+                for (key, value) in table_like_source.iter() {
                     target_table.insert(key, value.clone());
                 }
             }
@@ -308,7 +343,7 @@ impl Manifest {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 // Handle Inline Table: Clear values and insert new values as raw inline Values to protect formatting
                 inline_table.clear();
-                for (key, value) in source.iter() {
+                for (key, value) in table_like_source.iter() {
                     if let Some(new_value) = value.as_value() {
                         inline_table.insert(key, new_value.clone());
                     }
@@ -317,7 +352,7 @@ impl Manifest {
         } else if let Some(target_table) = target_item.as_table_mut() {
             // Handle Standard Table: Clear contents but preserve header comments and original line placement
             target_table.clear();
-            for (key, value) in source.iter() {
+            for (key, value) in table_like_source.iter() {
                 target_table.insert(key, value.clone());
             }
         } else {
@@ -332,14 +367,25 @@ impl Manifest {
         table: &TablePath,
         key: Option<&str>,
         value: &Item,
+        inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
-        let source = value
-            .as_table_like()
-            .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
-
         let base_table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
+
+        let source_item = if let Some(k) = key {
+            if base_table.is_inline_table() {
+                value.clone()
+            } else {
+                inherit_mode.resolve_key(k.to_string(), value.clone())?
+            }
+        } else {
+            inherit_mode.resolve_items(value.clone())?
+        };
+
+        let table_like_source = source_item
+            .as_table_like()
+            .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
 
         let target_item = match key {
             Some(key) => base_table
@@ -351,14 +397,14 @@ impl Manifest {
         if let Some(array_of_tables) = target_item.as_array_of_tables_mut() {
             // Handle Array of Tables: Merge into the first/last targeted block instance
             if let Some(target_table) = array_of_tables.get_mut(0) {
-                for (key, value) in source.iter() {
+                for (key, value) in table_like_source.iter() {
                     target_table.insert(key, value.clone());
                 }
             }
         } else if let Some(old_value) = target_item.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 // Handle Inline Table: Merge inside the curly braces `{ ... }`
-                for (key, value) in source.iter() {
+                for (key, value) in table_like_source.iter() {
                     if let Some(value) = value.as_value() {
                         inline_table.insert(key, value.clone());
                     }
@@ -366,7 +412,7 @@ impl Manifest {
             }
         } else if let Some(target_table) = target_item.as_table_mut() {
             // Handle Standard Table: Merge fields cleanly
-            for (key, value) in source.iter() {
+            for (key, value) in table_like_source.iter() {
                 target_table.insert(key, value.clone());
             }
         } else {
