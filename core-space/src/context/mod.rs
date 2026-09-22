@@ -2,6 +2,7 @@ mod metadata;
 mod modifier;
 mod target;
 
+pub use metadata::DepId;
 pub use metadata::MANIFEST_FILENAME;
 pub use metadata::PkgId;
 pub use metadata::Space;

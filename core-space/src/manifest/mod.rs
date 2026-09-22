@@ -6,7 +6,10 @@ mod toml_manifest;
 use toml_manifest::TomlManifest;
 
 pub use inherit_mode::InheritMode;
+pub use table_path::TableDepKind;
+pub use table_path::TableDepTarget;
 pub use table_path::TablePath;
+pub use table_path::build_table_dep;
 pub use toml_manifest::Array;
 pub use toml_manifest::Doc;
 pub use toml_manifest::DocMut;
@@ -256,7 +259,7 @@ impl Manifest {
         table: &TablePath,
         key: &str,
         value: Option<&Item>,
-    ) -> CargoResult<Option<String>> {
+    ) -> CargoResult<()> {
         let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
         match value {
@@ -280,23 +283,16 @@ impl Manifest {
 
                 if let Some(idx) = index {
                     array.remove(idx);
-                    Ok(None)
-                } else {
-                    Ok(Some(format!(
-                        "Value `{val_remove}` could not be found in array `{key}`"
-                    )))
                 }
+
+                Ok(())
             }
             None => {
                 if let Some(target_table) = table.as_table_like_mut() {
-                    if target_table.remove(key).is_none() {
-                        Ok(Some(format!("`{key}` could not be found")))
-                    } else {
-                        Ok(None)
-                    }
-                } else {
-                    Ok(Some(format!("Item is not a table")))
+                    target_table.remove(key);
                 }
+
+                Ok(())
             }
         }
     }

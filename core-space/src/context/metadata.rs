@@ -4,7 +4,12 @@ use std::path::PathBuf;
 
 use crate::errors::CargoResult;
 use crate::errors::error;
+use crate::manifest::InheritMode;
+use crate::manifest::Item;
 use crate::manifest::Manifest;
+use crate::manifest::TableDepKind;
+use crate::manifest::TableDepTarget;
+use crate::manifest::TablePath;
 
 pub const MANIFEST_FILENAME: &str = "Cargo.toml";
 
@@ -14,6 +19,8 @@ pub struct Space {
     root_manifest_path: PathBuf,
     root_pkg_id: Option<PkgId>,
     members: Option<Vec<PkgId>>,
+
+    root_deps: Option<Vec<DepId>>,
 
     manifest: Option<Manifest>,
 }
@@ -112,6 +119,9 @@ impl Space {
             root_manifest_path,
             root_pkg_id,
             members: Some(members),
+
+            root_deps: None,
+
             manifest: None,
         }
     }
@@ -137,6 +147,17 @@ impl Space {
 
     pub fn add_members(&mut self, pkg_ids: Vec<PkgId>) {
         self.members.get_or_insert_with(Vec::new).extend(pkg_ids);
+    }
+
+    pub fn try_get_root_deps(&mut self) -> CargoResult<&[DepId]> {
+        if self.root_deps.is_none() {
+            let manifest = self.try_get_manifest()?;
+            self.root_deps = Some(DepId::from_manifest(manifest, true));
+        }
+
+        self.root_deps
+            .as_deref()
+            .ok_or_else(|| error!("dependencies not found"))
     }
 }
 
@@ -209,6 +230,7 @@ pub struct PkgId {
     path: PathBuf,
     manifest_path: PathBuf,
     workspace_path: Option<PathBuf>,
+    deps: Option<Vec<DepId>>,
 
     manifest: Option<Manifest>,
 }
@@ -253,6 +275,17 @@ impl PkgId {
     pub fn get_workspace_path(&self) -> Option<&Path> {
         self.workspace_path.as_deref()
     }
+
+    pub fn try_get_deps(&mut self) -> CargoResult<&[DepId]> {
+        if self.deps.is_none() {
+            let manifest = self.try_get_manifest()?;
+            self.deps = Some(DepId::from_manifest(manifest, false));
+        }
+
+        self.deps
+            .as_deref()
+            .ok_or_else(|| error!("dependencies not found"))
+    }
 }
 
 impl PkgId {
@@ -268,6 +301,9 @@ impl PkgId {
             path,
             manifest_path,
             workspace_path: Some(workspace_root.to_path_buf()),
+
+            deps: None,
+
             manifest: None,
         }
     }
@@ -334,5 +370,151 @@ impl std::hash::Hash for PkgId {
         self.path.hash(state);
         self.manifest_path.hash(state);
         self.workspace_path.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DepId {
+    name: String,
+    rename: Option<String>,
+    kind: Option<TableDepKind>,
+    target: Option<TableDepTarget>,
+
+    inherit_mode: InheritMode,
+}
+
+impl DepId {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_name(mut self, value: impl Into<String>) -> Self {
+        self.name = value.into();
+        self
+    }
+
+    pub fn with_rename(mut self, value: impl Into<String>) -> Self {
+        self.rename = Some(value.into());
+        self
+    }
+
+    pub fn with_kind(mut self, kind: TableDepKind) -> Self {
+        self.kind = Some(kind);
+        self
+    }
+
+    pub fn with_target(mut self, target: impl Into<TableDepTarget>) -> Self {
+        self.target = Some(target.into());
+        self
+    }
+
+    pub fn with_inherit_mode(mut self, mode: impl Into<InheritMode>) -> Self {
+        self.inherit_mode = mode.into();
+        self
+    }
+
+    pub fn get_name(&self) -> &String {
+        &self.name
+    }
+
+    pub fn get_rename(&self) -> Option<&String> {
+        self.rename.as_ref()
+    }
+
+    pub fn get_kind(&self) -> Option<&TableDepKind> {
+        self.kind.as_ref()
+    }
+
+    pub fn get_target(&self) -> Option<&TableDepTarget> {
+        self.target.as_ref()
+    }
+
+    pub fn get_inherit_mode(&self) -> &InheritMode {
+        &self.inherit_mode
+    }
+}
+
+impl DepId {
+    pub fn from_manifest(manifest: &Manifest, is_space: bool) -> Vec<Self> {
+        let mut deps = Vec::new();
+
+        if is_space {
+            let workspace = TableDepTarget::new().with_kind(TableDepKind::Workspace);
+            let mut path = TablePath::new();
+
+            for part in workspace.to_table() {
+                path = path.push(part);
+            }
+
+            if manifest.is_table_exist(&path) {
+                if let Ok(item) = manifest.get_item_of_table(&path) {
+                    if let Some(table) = item.as_table_like() {
+                        for (name, item) in table.iter() {
+                            let mut dep = Self::new()
+                                .with_name(name)
+                                .with_kind(TableDepKind::Workspace);
+
+                            if let Some(table) = item.as_table_like() {
+                                if let Some(rename) = table.get("package").and_then(Item::as_str) {
+                                    dep = dep.with_rename(rename);
+                                }
+                            }
+
+                            deps.push(dep);
+                        }
+                    }
+                }
+            }
+
+            return deps;
+        }
+
+        for dep_table in TableDepTarget::KINDS {
+            let mut path = TablePath::new();
+
+            for part in dep_table.to_table() {
+                path = path.push(part);
+            }
+
+            if !manifest.is_table_exist(&path) {
+                continue;
+            }
+
+            let table = match manifest.get_item_of_table(&path) {
+                Ok(item) => match item.as_table_like() {
+                    Some(table) => table,
+                    None => continue,
+                },
+                Err(_) => continue,
+            };
+
+            for (name, item) in table.iter() {
+                let mut dep = Self::new().with_name(name).with_kind(*dep_table.get_kind());
+
+                if let Some(target) = dep_table.get_target() {
+                    dep = dep.with_target(target);
+                }
+
+                if let Some(table) = item.as_table_like() {
+                    if let Some(rename) = table.get("package").and_then(Item::as_str) {
+                        dep = dep.with_rename(rename);
+                    }
+
+                    if table.get("workspace").and_then(Item::as_bool) == Some(true) {
+                        dep.inherit_mode = if table.len() == 1 {
+                            InheritMode::Full
+                        } else {
+                            InheritMode::Partial
+                        };
+
+                        dep = dep.with_kind(TableDepKind::Workspace);
+                    }
+                }
+
+                deps.push(dep);
+            }
+        }
+
+        deps
     }
 }

@@ -177,7 +177,7 @@ impl CreatePackageOption {
                     .with_path(TablePath::new().push("workspace"))
                     .with_key("members")
                     .with_item(member_path.into()),
-                "none",
+                InheritMode::None,
             ),
             Target::space(),
         )?;

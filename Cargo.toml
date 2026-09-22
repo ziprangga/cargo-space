@@ -27,6 +27,7 @@ rustc-hash = "2.1"
 indexmap = "2.13"
 cargo_metadata = "0.23"
 tempfile = "3.27"
+# tame-index = { version = "0.26.3", features = ["sparse"] } #test decorate
 
 # ======package=======
 [package]

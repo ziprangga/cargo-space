@@ -1,7 +1,7 @@
 mod add;
 mod create;
 mod new;
-// mod remove;
+mod remove;
 
 use clap::{ArgMatches, Command};
 use core_space::CargoResult;
@@ -12,7 +12,7 @@ pub fn cli() -> Command {
         .subcommand(new::cli_new())
         .subcommand(create::cli_create())
         .subcommand(add::cli_add())
-    // .subcommand(remove::cli_remove())
+        .subcommand(remove::cli_remove())
 }
 
 pub fn exec(command: &str, args: &ArgMatches) -> CargoResult<()> {
@@ -20,7 +20,7 @@ pub fn exec(command: &str, args: &ArgMatches) -> CargoResult<()> {
         "new" => new::exec_new(args),
         "create" => create::exec_create(args),
         "add" => add::exec_add(args),
-        // "remove" => remove::exec_remove(args),
+        "remove" => remove::exec_remove(args),
         _ => unreachable!(),
     }
 }

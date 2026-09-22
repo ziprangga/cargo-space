@@ -72,11 +72,7 @@ impl Modifier {
                     .key()
                     .ok_or_else(|| error!("Remove key or value requires a key"))?;
 
-                if let Some(message) =
-                    manifest.remove_key_or_value(change.path(), key, change.item())?
-                {
-                    println!("{message}");
-                }
+                manifest.remove_key_or_value(change.path(), key, change.item())?;
             }
 
             Self::ReplaceItemsAt(change, mode) => {

@@ -1,11 +1,8 @@
-mod dep_kind;
 mod dep_source;
 mod dependency;
 mod edition;
 mod package_items;
 
-pub use dep_kind::DepTableKind;
-pub use dep_kind::DepTableSection;
 pub use dep_source::GitSource;
 pub use dep_source::PathSource;
 pub use dep_source::RegistrySource;

@@ -5,8 +5,6 @@ use dep_req::DepReq;
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use core_space::CargoResult;
 use core_space::config::DataInherit;
-use core_space::config::DepTableKind;
-use core_space::config::DepTableSection;
 use core_space::config::Dependency;
 use core_space::config::RulesInherit;
 use core_space::context::Change;
@@ -17,6 +15,7 @@ use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::Item;
 use core_space::manifest::TablePath;
+use core_space::manifest::build_table_dep;
 use core_space::manifest::into_inline_table_item_if;
 
 use std::path::PathBuf;
@@ -40,7 +39,7 @@ impl AddOptions {
         let space_dep_table = TablePath::new().push("workspace").push("dependencies");
 
         if let Some(pkg) = &self.package {
-            let pkg_dep_table = build_table_dep(self.dev, self.build, self.target.clone())?;
+            let (_, pkg_dep_table) = build_table_dep(self.dev, self.build, self.target.clone())?;
 
             let inherit_mode = match &self.private {
                 RulesInherit::Choose(_) => InheritMode::Partial,
@@ -76,7 +75,7 @@ impl AddOptions {
                                     .with_path(space_dep_table.clone())
                                     .with_key(crate_name)
                                     .with_item(space_item),
-                                "none",
+                                InheritMode::None,
                             ),
                             Target::space(),
                         )?;
@@ -174,29 +173,6 @@ fn inherit_split(
         dep_item_space.map(|dependency| dependency.to_toml()),
         dep_item_pkg.map(|dependency| dependency.to_toml()),
     ))
-}
-
-fn build_table_dep(dev: bool, build: bool, target: Option<String>) -> CargoResult<TablePath> {
-    let mut dep_table = DepTableSection::new();
-    if dev {
-        dep_table = dep_table.with_kind(DepTableKind::Development);
-    } else if build {
-        dep_table = dep_table.with_kind(DepTableKind::Build);
-    }
-    if let Some(target) = &target {
-        dep_table = dep_table.with_target(target);
-    }
-
-    let mut path = TablePath::new();
-
-    if let Some(target) = dep_table.get_target() {
-        path = path.push("target").push(target);
-    }
-
-    let kind = dep_table.get_kind().kind_table();
-    path = path.push(kind);
-
-    Ok(path)
 }
 
 pub fn cli_add() -> Command {
