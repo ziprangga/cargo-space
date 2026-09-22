@@ -36,7 +36,7 @@ pub enum TableDepKind {
 }
 
 impl TableDepKind {
-    pub fn as_str(&self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
             TableDepKind::Normal => "dependencies",
             TableDepKind::Development => "dev-dependencies",
