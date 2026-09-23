@@ -106,7 +106,7 @@ impl NewOptions {
     }
 }
 
-fn version_control(dir: &Path, non_vcs: bool) -> CargoResult<()> {
+pub fn version_control(dir: &Path, non_vcs: bool) -> CargoResult<()> {
     if non_vcs {
         return Ok(());
     }
@@ -115,14 +115,14 @@ fn version_control(dir: &Path, non_vcs: bool) -> CargoResult<()> {
     GitRepo::write_gitignore_file(dir, &IgnoreList::default())
 }
 
-fn build_pkg_items(edition: Option<String>, registry: Option<String>) -> PackageItems {
+pub fn build_pkg_items(edition: Option<String>, registry: Option<String>) -> PackageItems {
     PackageItems::new()
         .with_version("0.1.0")
         .with_edition(edition.as_deref().unwrap_or("2024"))
         .with_publish(registry.as_ref().map(|registry| vec![registry.clone()]))
 }
 
-fn build_non_virtual_src(path: &Path) -> CargoResult<()> {
+pub fn build_non_virtual_src(path: &Path) -> CargoResult<()> {
     let src_path = path.join("src");
     std::fs::create_dir_all(&src_path)?;
     std::fs::write(
@@ -133,16 +133,16 @@ fn build_non_virtual_src(path: &Path) -> CargoResult<()> {
     Ok(())
 }
 
-fn resolver_default(edition: Option<String>) -> CargoResult<String> {
+pub fn resolver_default(edition: Option<String>) -> CargoResult<String> {
     let edition = edition.as_deref().unwrap_or("2024").parse::<Edition>()?;
-    let value = edition.default_resolver().to_manifest();
+    let value = edition.default_resolver().to_string();
 
     Ok(value)
 }
 
 pub fn cli_new() -> Command {
     Command::new("new")
-        .about("Create a new cargo package at <path>")
+        .about("Create a new cargo workspace at <path>")
         .arg(
             Arg::new("path")
                 .value_name("PATH")

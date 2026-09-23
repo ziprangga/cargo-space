@@ -23,3 +23,7 @@ pub fn into_inline_table_item_if(condition: bool, item: Item) -> CargoResult<Ite
         Ok(item)
     }
 }
+
+pub fn into_item(value: impl Into<String>) -> Item {
+    Item::Value(Value::from(value.into()))
+}

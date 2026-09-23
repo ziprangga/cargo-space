@@ -21,6 +21,7 @@ pub use toml_manifest::Value;
 pub use man_util::into_inline_table;
 pub use man_util::into_inline_table_item;
 pub use man_util::into_inline_table_item_if;
+pub use man_util::into_item;
 
 use crate::errors::{CargoResult, Context, error};
 use std::path::{Path, PathBuf};

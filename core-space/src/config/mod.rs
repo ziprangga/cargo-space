@@ -107,7 +107,7 @@ impl Workspace {
         }
 
         if let Some(value) = &self.resolver {
-            table.insert("resolver", value.to_manifest().into());
+            table.insert("resolver", value.to_string().into());
         }
 
         if let Some(value) = &self.default_members {

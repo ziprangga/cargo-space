@@ -1,6 +1,5 @@
 use std::str::FromStr;
 
-use crate::errors::CargoResult;
 use crate::errors::Error;
 use crate::errors::bail_out;
 
@@ -10,6 +9,45 @@ pub enum Resolver {
     V2,
     #[default]
     V3,
+}
+
+impl Resolver {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::V1 => "1",
+            Self::V2 => "2",
+            Self::V3 => "3",
+        }
+        .to_owned()
+    }
+}
+
+impl FromStr for Resolver {
+    type Err = Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "1" => Ok(Self::V1),
+            "2" => Ok(Self::V2),
+            "3" => Ok(Self::V3),
+            s => bail_out!(
+                "`resolver` setting `{}` is not valid, valid options are \"1\", \"2\" or \"3\"",
+                s
+            ),
+        }
+    }
+}
+
+impl From<&str> for Resolver {
+    fn from(value: &str) -> Self {
+        value.parse().expect("invalid resolver")
+    }
+}
+
+impl From<String> for Resolver {
+    fn from(value: String) -> Self {
+        value.parse().expect("invalid resolver")
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug, Hash, PartialOrd, Ord, Eq, PartialEq)]
@@ -22,29 +60,6 @@ pub enum Edition {
 
     #[default]
     Edition2024,
-}
-
-impl Resolver {
-    pub fn from_manifest(resolver: &str) -> CargoResult<Self> {
-        match resolver {
-            "1" => Ok(Self::V1),
-            "2" => Ok(Self::V2),
-            "3" => Ok(Self::V3),
-            s => bail_out!(
-                "`resolver` setting `{}` is not valid, valid options are \"1\", \"2\" or \"3\"",
-                s
-            ),
-        }
-    }
-
-    pub fn to_manifest(&self) -> String {
-        match self {
-            Self::V1 => "1",
-            Self::V2 => "2",
-            Self::V3 => "3",
-        }
-        .to_owned()
-    }
 }
 
 impl Edition {
@@ -63,31 +78,6 @@ impl Edition {
         } else {
             Resolver::V1
         }
-    }
-}
-
-impl FromStr for Resolver {
-    type Err = Error;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "1" => Ok(Self::V1),
-            "2" => Ok(Self::V2),
-            "3" => Ok(Self::V3),
-            value => bail_out!("unknown resolver `{value}`"),
-        }
-    }
-}
-
-impl From<&str> for Resolver {
-    fn from(value: &str) -> Self {
-        value.parse().expect("invalid resolver")
-    }
-}
-
-impl From<String> for Resolver {
-    fn from(value: String) -> Self {
-        value.parse().expect("invalid resolver")
     }
 }
 
