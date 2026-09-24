@@ -21,11 +21,41 @@ pub fn latest_version(crate_name: &str, registry: &Url) -> CargoResult<semver::V
 
 pub fn compatible_version(
     crate_name: &str,
-    version_req: &str,
+    version_req: &semver::VersionReq,
     registry: &Url,
 ) -> CargoResult<semver::Version> {
-    let version = semver::VersionReq::parse(version_req)?;
-    find_version(crate_name, &version, registry)
+    find_version(crate_name, version_req, registry)
+}
+
+pub fn exact_version(
+    crate_name: &str,
+    version_req: &semver::Version,
+    registry: &Url,
+) -> CargoResult<semver::Version> {
+    let index = crates_index::SparseIndex::from_url(registry.as_str())?;
+
+    let crate_ = match index.crate_from_cache(crate_name) {
+        Ok(crate_) => crate_,
+        Err(_) => {
+            update_cache(&index, crate_name)?;
+            index.crate_from_cache(crate_name)?
+        }
+    };
+
+    crate_
+        .versions()
+        .iter()
+        .filter(|ver| !ver.is_yanked())
+        .find_map(|ver| {
+            let candidate = ver.version().parse::<semver::Version>().ok()?;
+
+            if candidate == *version_req {
+                Some(candidate)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| error!("no exact version of `{crate_name}` found for `{version_req}`"))
 }
 
 fn find_version(

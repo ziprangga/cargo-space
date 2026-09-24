@@ -12,16 +12,23 @@ use core_space::error;
 use core_space::manifest::Item;
 
 use core_space::compatible_version;
+use core_space::exact_version;
 use core_space::latest_version;
 use core_space::registry_url;
 
 use std::path::Path;
 use std::path::PathBuf;
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum DepVersion {
+    Exact(semver::Version),
+    Compatible(semver::VersionReq),
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct DepReq {
     name: String,
-    version: Option<String>,
+    version_target: Option<DepVersion>,
 }
 
 impl DepReq {
@@ -35,27 +42,35 @@ impl DepReq {
             bail_out!("crate name cannot be empty");
         }
 
-        if let Some(version) = version {
-            if version.is_empty() {
+        let version_target = if let Some(ver) = version {
+            if ver.is_empty() {
                 bail_out!("version requirement cannot be empty");
             }
 
-            semver::VersionReq::parse(version).with_context(|| {
-                if let Some(stripped) = version.strip_prefix('v') {
+            let version_req = semver::VersionReq::parse(ver).with_context(|| {
+                if let Some(stripped) = ver.strip_prefix('v') {
                     format!(
-                        "the version provided, `{version}` is not a \
+                        "the version provided, `{ver}` is not a \
                              valid SemVer requirement\n\n\
                              help: changing the package to `{name}@{stripped}`"
                     )
                 } else {
-                    format!("invalid version requirement `{version}`")
+                    format!("invalid version requirement `{ver}`")
                 }
             })?;
-        }
+
+            if let Ok(version) = semver::Version::parse(ver) {
+                Some(DepVersion::Exact(version))
+            } else {
+                Some(DepVersion::Compatible(version_req))
+            }
+        } else {
+            None
+        };
 
         let dep_req = Self {
             name: name.into(),
-            version: version.map(|s| s.to_owned()),
+            version_target,
         };
 
         Ok(dep_req)
@@ -65,8 +80,8 @@ impl DepReq {
         &self.name
     }
 
-    pub fn version(&self) -> Option<&str> {
-        self.version.as_deref()
+    pub fn version_target(&self) -> Option<&DepVersion> {
+        self.version_target.as_ref()
     }
 }
 
@@ -90,7 +105,7 @@ pub struct DepOptions {
 impl DepOptions {
     pub fn to_dependency(&self, manifest_path: &Path) -> CargoResult<Dependency> {
         let crate_name = self.dep_req.name();
-        let version_req = self.dep_req.version();
+        let version_req = self.dep_req.version_target();
 
         let resolve_version = get_version(
             crate_name,
@@ -160,17 +175,25 @@ pub fn inherit_split(
 
 fn get_version(
     crate_name: &str,
-    version: Option<&str>,
+    version_target: Option<&DepVersion>,
     manifest_path: &Path,
 
     path: Option<&Path>,
     git: Option<&str>,
     registry: Option<&str>,
 ) -> CargoResult<Option<String>> {
-    match version {
-        Some(version) => {
-            let registry = registry_url(manifest_path, registry.as_deref())?;
-            let version = compatible_version(crate_name, version, &registry)?;
+    match version_target {
+        Some(DepVersion::Exact(version)) => {
+            let registry = registry_url(manifest_path, registry)?;
+            let version = exact_version(crate_name, version, &registry)?;
+
+            Ok(Some(version.to_string()))
+        }
+
+        Some(DepVersion::Compatible(version_req)) => {
+            let registry = registry_url(manifest_path, registry)?;
+            let version = compatible_version(crate_name, version_req, &registry)?;
+
             Ok(Some(version.to_string()))
         }
 

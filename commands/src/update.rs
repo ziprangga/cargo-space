@@ -303,3 +303,90 @@ pub fn exec_update(args: &ArgMatches) -> CargoResult<()> {
 
     opts.run()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn setup_workspace() -> tempfile::TempDir {
+        let dir = tempdir().unwrap();
+
+        fs::create_dir_all(dir.path().join("app/src")).unwrap();
+
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            r#"[workspace]
+members = ["app"]
+
+[workspace.dependencies]
+serde = "1"
+tokio = "1"
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("app/Cargo.toml"),
+            r#"[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+"#,
+        )
+        .unwrap();
+
+        fs::write(dir.path().join("app/src/main.rs"), "fn main() {}\n").unwrap();
+
+        dir
+    }
+
+    #[test]
+    fn update_dependency() {
+        let dir = setup_workspace();
+        let old_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let workspace_before = fs::read_to_string(dir.path().join("Cargo.toml")).unwrap();
+
+        println!("=== update_dependency: workspace before ===");
+        println!("{workspace_before}");
+
+        UpdateOptions {
+            dep_options: DepOptions {
+                dep_req: DepReq::resolve("serde@1.0.200").unwrap(),
+                path: None,
+                git: None,
+                tag: None,
+                branch: None,
+                rev: None,
+                registry: None,
+                features: None,
+                optional: None,
+            },
+            package: None,
+            dev: false,
+            build: false,
+            target: None,
+            private: RulesInherit::None,
+            change_inherit: false,
+        }
+        .run()
+        .unwrap();
+
+        std::env::set_current_dir(old_dir).unwrap();
+
+        let workspace_after = fs::read_to_string(dir.path().join("Cargo.toml")).unwrap();
+
+        println!("=== update_dependency: workspace after ===");
+        println!("{workspace_after}");
+
+        assert!(workspace_after.contains("serde = \"1.0.200\""));
+        assert!(workspace_after.contains("tokio = \"1\""));
+    }
+}

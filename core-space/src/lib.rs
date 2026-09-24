@@ -13,6 +13,7 @@ pub use errors::Error;
 pub use errors::bail_out;
 pub use errors::error;
 pub use registry::compatible_version;
+pub use registry::exact_version;
 pub use registry::latest_version;
 pub use registry::registry_url;
 pub use utility::HashMap;
