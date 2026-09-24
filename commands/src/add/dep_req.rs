@@ -82,7 +82,7 @@ pub struct DepOptions {
     pub registry: Option<String>,
 
     pub features: Option<IndexSet<String>>,
-    pub optional: bool,
+    pub optional: Option<bool>,
 }
 
 impl DepOptions {
@@ -136,8 +136,8 @@ impl DepOptions {
             dependency = dependency.with_features(features.clone());
         }
 
-        if self.optional {
-            dependency = dependency.with_optional(true);
+        if let Some(optional) = self.optional {
+            dependency = dependency.with_optional(optional);
         }
 
         Ok(dependency)

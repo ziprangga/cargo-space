@@ -36,18 +36,18 @@ impl AddOptions {
         let mut ctx = Context::discover()?;
 
         let crate_name = self.dep_options.dep_req.name();
-        let space_dep_table = TablePath::new().push("workspace").push("dependencies");
+
+        let (space_dep_table, pkg_dep_table) =
+            build_table_dep(self.dev, self.build, self.target.clone())?;
 
         if let Some(pkg) = &self.package {
-            let (_, pkg_dep_table) = build_table_dep(self.dev, self.build, self.target.clone())?;
-
             let inherit_mode = match &self.private {
                 RulesInherit::Choose(_) => InheritMode::Partial,
                 RulesInherit::All => InheritMode::Full,
                 RulesInherit::None => InheritMode::None,
             };
 
-            if let Some(item) = dep_from_space(&mut ctx, crate_name)? {
+            if let Some(item) = dep_from_space(&mut ctx, crate_name, &space_dep_table)? {
                 let root_path = ctx.get_space().get_root_path();
                 let dependency = Dependency::from_toml(root_path, crate_name, &item);
                 if let Some(dep) = dependency {
@@ -124,11 +124,7 @@ impl AddOptions {
             let dependency = self.dep_options.to_dependency(space_manifest_path)?;
 
             let inline_condition =
-                if self.dep_options.features.is_some() || self.dep_options.optional {
-                    true
-                } else {
-                    false
-                };
+                self.dep_options.features.is_some() || self.dep_options.optional.is_some();
 
             let space_depedency =
                 into_inline_table_item_if(inline_condition, dependency.to_toml())?;
@@ -152,14 +148,17 @@ impl AddOptions {
     }
 }
 
-fn dep_from_space(ctx: &mut Context, dep_name: &str) -> CargoResult<Option<Item>> {
-    let dep_table = TablePath::new().push("workspace").push("dependencies");
+fn dep_from_space(
+    ctx: &mut Context,
+    dep_name: &str,
+    space_dep_table: &TablePath,
+) -> CargoResult<Option<Item>> {
     let manifest = ctx.get_space_mut().try_get_manifest()?;
-    if !manifest.is_key_exist(&dep_table, dep_name) {
+    if !manifest.is_key_exist(&space_dep_table, dep_name) {
         return Ok(None);
     }
 
-    let dep_item = manifest.get_item_of_key(&dep_table, dep_name)?;
+    let dep_item = manifest.get_item_of_key(&space_dep_table, dep_name)?;
     Ok(Some(dep_item.clone()))
 }
 
@@ -254,7 +253,7 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
         .get_many::<String>("features")
         .map(|values| values.cloned().collect());
 
-    let optional = args.get_flag("optional");
+    let optional = args.get_one::<bool>("optional").copied();
 
     let package = args.get_one::<String>("package").cloned();
 
