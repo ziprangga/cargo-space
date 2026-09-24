@@ -14,7 +14,6 @@ use core_space::context::Target;
 use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::Item;
-use core_space::manifest::TablePath;
 use core_space::manifest::build_table_dep;
 use core_space::manifest::into_inline_table_item_if;
 
@@ -47,7 +46,7 @@ impl AddOptions {
                 RulesInherit::None => InheritMode::None,
             };
 
-            if let Some(item) = dep_from_space(&mut ctx, crate_name, &space_dep_table)? {
+            if let Some(item) = dep_from_space(&mut ctx, crate_name)? {
                 let dependency = Dependency::from_toml(crate_name, &item);
                 if let Some(dep) = dependency {
                     let (space_dep_item, pkg_dep_item) = inherit_split(self.private.clone(), &dep)?;
@@ -147,18 +146,15 @@ impl AddOptions {
     }
 }
 
-fn dep_from_space(
-    ctx: &mut Context,
-    dep_name: &str,
-    space_dep_table: &TablePath,
-) -> CargoResult<Option<Item>> {
-    let manifest = ctx.get_space_mut().try_get_manifest()?;
-    if !manifest.is_key_exist(&space_dep_table, dep_name) {
-        return Ok(None);
-    }
+fn dep_from_space(ctx: &mut Context, dep_name: &str) -> CargoResult<Option<Item>> {
+    let root_deps = ctx.get_space_mut().try_get_root_deps()?;
 
-    let dep_item = manifest.get_item_of_key(&space_dep_table, dep_name)?;
-    Ok(Some(dep_item.clone()))
+    let dep_item = root_deps
+        .iter()
+        .find(|dep| dep.get_name() == dep_name || dep.get_rename() == Some(dep_name))
+        .and_then(|dep| dep.get_toml_item().cloned());
+
+    Ok(dep_item)
 }
 
 fn inherit_split(

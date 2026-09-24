@@ -377,10 +377,10 @@ impl std::hash::Hash for PkgId {
 pub struct DepId {
     name: String,
     rename: Option<String>,
-    kind: Option<TableDepKind>,
-    target: Option<TableDepTarget>,
+    table_loc: Option<TableDepTarget>,
 
     inherit_mode: InheritMode,
+    toml_item: Option<Item>,
 }
 
 impl DepId {
@@ -398,13 +398,8 @@ impl DepId {
         self
     }
 
-    pub fn with_kind(mut self, kind: TableDepKind) -> Self {
-        self.kind = Some(kind);
-        self
-    }
-
-    pub fn with_target(mut self, target: impl Into<TableDepTarget>) -> Self {
-        self.target = Some(target.into());
+    pub fn with_table_loc(mut self, table_loc: impl Into<TableDepTarget>) -> Self {
+        self.table_loc = Some(table_loc.into());
         self
     }
 
@@ -413,24 +408,29 @@ impl DepId {
         self
     }
 
-    pub fn get_name(&self) -> &String {
+    pub fn with_toml_item(mut self, item: Item) -> Self {
+        self.toml_item = Some(item);
+        self
+    }
+
+    pub fn get_name(&self) -> &str {
         &self.name
     }
 
-    pub fn get_rename(&self) -> Option<&String> {
-        self.rename.as_ref()
+    pub fn get_rename(&self) -> Option<&str> {
+        self.rename.as_deref()
     }
 
-    pub fn get_kind(&self) -> Option<&TableDepKind> {
-        self.kind.as_ref()
-    }
-
-    pub fn get_target(&self) -> Option<&TableDepTarget> {
-        self.target.as_ref()
+    pub fn get_table_loc(&self) -> Option<&TableDepTarget> {
+        self.table_loc.as_ref()
     }
 
     pub fn get_inherit_mode(&self) -> &InheritMode {
         &self.inherit_mode
+    }
+
+    pub fn get_toml_item(&self) -> Option<&Item> {
+        self.toml_item.as_ref()
     }
 }
 
@@ -446,22 +446,21 @@ impl DepId {
                 path = path.push(part);
             }
 
-            if manifest.is_table_exist(&path) {
-                if let Ok(item) = manifest.get_item_of_table(&path) {
-                    if let Some(table) = item.as_table_like() {
-                        for (name, item) in table.iter() {
-                            let mut dep = Self::new()
-                                .with_name(name)
-                                .with_kind(TableDepKind::Workspace);
+            if let Ok(item) = manifest.get_item_of_table(&path) {
+                if let Some(table) = item.as_table_like() {
+                    for (name, item) in table.iter() {
+                        let mut dep = Self::new()
+                            .with_name(name)
+                            .with_table_loc(workspace.clone())
+                            .with_toml_item(item.clone());
 
-                            if let Some(table) = item.as_table_like() {
-                                if let Some(rename) = table.get("package").and_then(Item::as_str) {
-                                    dep = dep.with_rename(rename);
-                                }
+                        if let Some(table) = item.as_table_like() {
+                            if let Some(rename) = table.get("package").and_then(Item::as_str) {
+                                dep = dep.with_rename(rename);
                             }
-
-                            deps.push(dep);
                         }
+
+                        deps.push(dep);
                     }
                 }
             }
@@ -476,10 +475,6 @@ impl DepId {
                 path = path.push(part);
             }
 
-            if !manifest.is_table_exist(&path) {
-                continue;
-            }
-
             let table = match manifest.get_item_of_table(&path) {
                 Ok(item) => match item.as_table_like() {
                     Some(table) => table,
@@ -489,10 +484,13 @@ impl DepId {
             };
 
             for (name, item) in table.iter() {
-                let mut dep = Self::new().with_name(name).with_kind(*dep_table.get_kind());
+                let mut dep = Self::new()
+                    .with_name(name)
+                    .with_table_loc(dep_table.clone())
+                    .with_toml_item(item.clone());
 
-                if let Some(target) = dep_table.get_target() {
-                    dep = dep.with_target(target);
+                if item.as_bool() == Some(true) {
+                    dep.inherit_mode = InheritMode::Full;
                 }
 
                 if let Some(table) = item.as_table_like() {
@@ -506,12 +504,65 @@ impl DepId {
                         } else {
                             InheritMode::Partial
                         };
-
-                        dep = dep.with_kind(TableDepKind::Workspace);
                     }
                 }
 
                 deps.push(dep);
+            }
+        }
+
+        let target = TablePath::new().push("target");
+
+        if let Ok(item) = manifest.get_item_of_table(&target) {
+            if let Some(targets) = item.as_table_like() {
+                for (target_name, target_item) in targets.iter() {
+                    let target_table = match target_item.as_table_like() {
+                        Some(table) => table,
+                        None => continue,
+                    };
+
+                    for dep_table in TableDepTarget::KINDS {
+                        let kind = dep_table.get_kind();
+                        let key = kind.dep_table();
+
+                        let table = match target_table.get(key) {
+                            Some(item) => match item.as_table_like() {
+                                Some(table) => table,
+                                None => continue,
+                            },
+                            None => continue,
+                        };
+
+                        let table_loc = dep_table.clone().with_target(target_name);
+
+                        for (name, item) in table.iter() {
+                            let mut dep = Self::new()
+                                .with_name(name)
+                                .with_table_loc(table_loc.clone())
+                                .with_toml_item(item.clone());
+
+                            if item.as_bool() == Some(true) {
+                                dep.inherit_mode = InheritMode::Full;
+                            }
+
+                            if let Some(table) = item.as_table_like() {
+                                if let Some(rename) = table.get("package").and_then(Item::as_str) {
+                                    dep = dep.with_rename(rename);
+                                }
+
+                                if table.get("workspace").and_then(Item::as_bool) == Some(true) {
+                                    dep.inherit_mode = if table.len() == 1 {
+                                        InheritMode::Full
+                                    } else {
+                                        InheritMode::Partial
+                                    };
+                                }
+                            }
+
+                            deps.push(dep);
+                        }
+                    }
+                }
             }
         }
 

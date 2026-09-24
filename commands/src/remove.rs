@@ -37,7 +37,7 @@ impl RemoveOptions {
                             dep.get_name() == dependency
                                 || dep.get_rename().is_some_and(|rename| rename == dependency)
                         }) {
-                            Some(dep) => Some(dep.get_name().clone()),
+                            Some(dep) => Some(dep.get_name().to_owned()),
                             None => {
                                 message.get_or_insert(format!("`{dependency}` could not be found"));
                                 None
@@ -77,7 +77,7 @@ impl RemoveOptions {
                                             .get_rename()
                                             .is_some_and(|rename| rename == dependency)
                                 }) {
-                                    Some(dep) => Some(dep.get_name().clone()),
+                                    Some(dep) => Some(dep.get_name().to_owned()),
                                     None => {
                                         message.get_or_insert(format!(
                                             "`{dependency}` could not be found"
@@ -112,7 +112,7 @@ impl RemoveOptions {
                             dep.get_name() == dependency
                                 || dep.get_rename().is_some_and(|rename| rename == dependency)
                         }) {
-                            Some(dep) => Some(dep.get_name().clone()),
+                            Some(dep) => Some(dep.get_name().to_owned()),
                             None => {
                                 message.get_or_insert(format!("`{dependency}` could not be found"));
                                 None
