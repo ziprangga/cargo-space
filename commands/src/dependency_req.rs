@@ -6,8 +6,10 @@ use core_space::config::Dependency;
 use core_space::config::GitSource;
 use core_space::config::PathSource;
 use core_space::config::RegistrySource;
+use core_space::config::RulesInherit;
 use core_space::config::Source;
 use core_space::error;
+use core_space::manifest::Item;
 
 use core_space::compatible_version;
 use core_space::latest_version;
@@ -142,6 +144,18 @@ impl DepOptions {
 
         Ok(dependency)
     }
+}
+
+pub fn inherit_split(
+    private: RulesInherit,
+    dependency: &Dependency,
+) -> CargoResult<(Option<Item>, Option<Item>)> {
+    let (dep_item_space, dep_item_pkg) = dependency.disjoint(&private);
+
+    Ok((
+        dep_item_space.map(|dependency| dependency.to_toml()),
+        dep_item_pkg.map(|dependency| dependency.to_toml()),
+    ))
 }
 
 fn get_version(

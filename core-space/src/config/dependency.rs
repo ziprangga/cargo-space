@@ -201,6 +201,36 @@ impl Dependency {
             (Some(workspace), Some(package))
         }
     }
+
+    pub fn update(&mut self, other: &Self) {
+        if !other.name.is_empty() {
+            self.name = other.name.clone();
+        }
+
+        if other.source.is_some() {
+            self.source = other.source.clone();
+        }
+
+        if other.optional.is_some() {
+            self.optional = other.optional;
+        }
+
+        if other.features.is_some() {
+            self.features = other.features.clone();
+        }
+
+        if other.default_features.is_some() {
+            self.default_features = other.default_features;
+        }
+
+        if other.rename.is_some() {
+            self.rename = other.rename.clone();
+        }
+
+        if other.public.is_some() {
+            self.public = other.public;
+        }
+    }
 }
 
 impl Dependency {

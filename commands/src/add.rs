@@ -1,6 +1,6 @@
-mod dep_req;
-use dep_req::DepOptions;
-use dep_req::DepReq;
+use crate::dependency_req::DepOptions;
+use crate::dependency_req::DepReq;
+use crate::dependency_req::inherit_split;
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use core_space::CargoResult;
@@ -152,21 +152,10 @@ fn dep_from_space(ctx: &mut Context, dep_name: &str) -> CargoResult<Option<Item>
     let dep_item = root_deps
         .iter()
         .find(|dep| dep.get_name() == dep_name || dep.get_rename() == Some(dep_name))
-        .and_then(|dep| dep.get_toml_item().cloned());
+        .map(|dep| dep.get_toml_item().cloned())
+        .transpose()?;
 
     Ok(dep_item)
-}
-
-fn inherit_split(
-    private: RulesInherit,
-    dependency: &Dependency,
-) -> CargoResult<(Option<Item>, Option<Item>)> {
-    let (dep_item_space, dep_item_pkg) = dependency.disjoint(&private);
-
-    Ok((
-        dep_item_space.map(|dependency| dependency.to_toml()),
-        dep_item_pkg.map(|dependency| dependency.to_toml()),
-    ))
 }
 
 pub fn cli_add() -> Command {

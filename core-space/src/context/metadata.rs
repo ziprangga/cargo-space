@@ -437,8 +437,10 @@ impl DepId {
         &self.inherit_mode
     }
 
-    pub fn get_toml_item(&self) -> Option<&Item> {
-        self.toml_item.as_ref()
+    pub fn get_toml_item(&self) -> CargoResult<&Item> {
+        self.toml_item
+            .as_ref()
+            .ok_or_else(|| error!("TOML item not found"))
     }
 }
 
