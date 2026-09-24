@@ -48,8 +48,7 @@ impl AddOptions {
             };
 
             if let Some(item) = dep_from_space(&mut ctx, crate_name, &space_dep_table)? {
-                let root_path = ctx.get_space().get_root_path();
-                let dependency = Dependency::from_toml(root_path, crate_name, &item);
+                let dependency = Dependency::from_toml(crate_name, &item);
                 if let Some(dep) = dependency {
                     let (space_dep_item, pkg_dep_item) = inherit_split(self.private.clone(), &dep)?;
                     if let Some(pkg_item) = pkg_dep_item {

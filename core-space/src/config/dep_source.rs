@@ -110,7 +110,7 @@ impl RegistrySource {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 #[non_exhaustive]
 pub struct PathSource {
-    /// Local, absolute path
+    /// Local path
     path: PathBuf,
     /// Version requirement for when published
     version: Option<String>,

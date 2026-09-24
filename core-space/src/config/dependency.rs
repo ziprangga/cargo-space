@@ -7,8 +7,6 @@ use crate::manifest::Array;
 use crate::manifest::Item;
 use crate::manifest::Table;
 
-use std::path::Path;
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub enum DataInherit {
     Features,
@@ -206,7 +204,7 @@ impl Dependency {
 }
 
 impl Dependency {
-    pub fn from_toml(root_path: &Path, key: &str, item: &Item) -> Option<Self> {
+    pub fn from_toml(key: &str, item: &Item) -> Option<Self> {
         if let Some(version) = item.as_str() {
             return Some(
                 Self::new()
@@ -245,7 +243,7 @@ impl Dependency {
 
             Source::Git(source)
         } else if let Some(value) = table.get("path") {
-            let mut source = PathSource::new(root_path.join(value.as_str()?));
+            let mut source = PathSource::new(value.as_str()?);
 
             if let Some(value) = table.get("version") {
                 source = source.with_version(value.as_str()?);
