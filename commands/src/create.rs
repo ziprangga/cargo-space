@@ -73,8 +73,6 @@ impl CreatePackageOption {
             },
         };
 
-        println!("path: {}", path.display());
-
         let kind = self.kind.unwrap_or(NewPackageKind::Bin);
         let edition = self.edition.as_deref().unwrap_or("2024");
         let registry = self

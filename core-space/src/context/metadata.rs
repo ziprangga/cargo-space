@@ -50,6 +50,16 @@ impl Space {
         self
     }
 
+    pub fn with_root_deps(mut self, root_deps: Vec<DepId>) -> Self {
+        self.root_deps = Some(root_deps);
+        self
+    }
+
+    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
     pub fn get_root_path(&self) -> &Path {
         &self.root_path
     }
@@ -77,6 +87,12 @@ impl Space {
             .as_ref()?
             .iter()
             .find(|package| package.get_name() == name)
+    }
+
+    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
     }
 
     pub fn is_virtual_workspace(&self) -> bool {
@@ -159,13 +175,6 @@ impl Space {
             .as_deref()
             .ok_or_else(|| error!("dependencies not found"))
     }
-}
-
-impl Space {
-    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
-        self.manifest = Some(manifest);
-        self
-    }
 
     pub fn try_get_manifest(&mut self) -> CargoResult<&Manifest> {
         self.try_load_and_cache_manifest()?;
@@ -178,12 +187,6 @@ impl Space {
         self.try_load_and_cache_manifest()?;
         self.manifest
             .as_mut()
-            .ok_or_else(|| error!("manifest not found"))
-    }
-
-    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
-        self.manifest
-            .as_ref()
             .ok_or_else(|| error!("manifest not found"))
     }
 
@@ -260,6 +263,16 @@ impl PkgId {
         self
     }
 
+    pub fn with_deps(mut self, deps: Vec<DepId>) -> Self {
+        self.deps = Some(deps);
+        self
+    }
+
+    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
+        self.manifest = Some(manifest);
+        self
+    }
+
     pub fn get_name(&self) -> &str {
         &self.name
     }
@@ -276,15 +289,10 @@ impl PkgId {
         self.workspace_path.as_deref()
     }
 
-    pub fn try_get_deps(&mut self) -> CargoResult<&[DepId]> {
-        if self.deps.is_none() {
-            let manifest = self.try_get_manifest()?;
-            self.deps = Some(DepId::from_manifest(manifest, false));
-        }
-
-        self.deps
-            .as_deref()
-            .ok_or_else(|| error!("dependencies not found"))
+    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
+        self.manifest
+            .as_ref()
+            .ok_or_else(|| error!("manifest not found"))
     }
 }
 
@@ -310,9 +318,15 @@ impl PkgId {
 }
 
 impl PkgId {
-    pub fn with_manifest(mut self, manifest: Manifest) -> Self {
-        self.manifest = Some(manifest);
-        self
+    pub fn try_get_deps(&mut self) -> CargoResult<&[DepId]> {
+        if self.deps.is_none() {
+            let manifest = self.try_get_manifest()?;
+            self.deps = Some(DepId::from_manifest(manifest, false));
+        }
+
+        self.deps
+            .as_deref()
+            .ok_or_else(|| error!("dependencies not found"))
     }
 
     pub fn try_get_manifest(&mut self) -> CargoResult<&Manifest> {
@@ -327,12 +341,6 @@ impl PkgId {
 
         self.manifest
             .as_mut()
-            .ok_or_else(|| error!("manifest not found"))
-    }
-
-    pub(crate) fn manifest_ref(&self) -> CargoResult<&Manifest> {
-        self.manifest
-            .as_ref()
             .ok_or_else(|| error!("manifest not found"))
     }
 
