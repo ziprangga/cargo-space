@@ -24,6 +24,8 @@ impl fmt::Display for TablePath {
     }
 }
 
+// This file contains code originally derived from Cargo and cargo-edit,
+// has been modified and adapted for cargo-space.
 #[derive(PartialEq, Eq, Hash, Ord, PartialOrd, Clone, Debug, Copy)]
 pub enum TableDepKind {
     Normal,

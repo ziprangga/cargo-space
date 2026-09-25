@@ -1,3 +1,6 @@
+// This file contains code originally derived from Cargo and has been
+// modified and adapted for cargo-space.
+
 use std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]

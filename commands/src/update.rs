@@ -1,4 +1,4 @@
-use crate::dependency_req::DepOptions;
+use crate::dependency_req::DepCmd;
 use crate::dependency_req::DepReq;
 use crate::dependency_req::inherit_split;
 
@@ -18,8 +18,8 @@ use core_space::manifest::build_table_dep;
 use core_space::manifest::into_inline_table_item_if;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct UpdateOptions {
-    dep_options: DepOptions,
+pub struct UpdateCmd {
+    dep_cmd: DepCmd,
 
     package: Option<String>,
     dev: bool,
@@ -29,11 +29,11 @@ pub struct UpdateOptions {
     change_inherit: bool,
 }
 
-impl UpdateOptions {
+impl UpdateCmd {
     fn run(&self) -> CargoResult<()> {
         let mut ctx = Context::discover()?;
 
-        let crate_name = self.dep_options.dep_req.name();
+        let crate_name = self.dep_cmd.dep_req.name();
         let (space_dep_table, pkg_dep_table) =
             build_table_dep(self.dev, self.build, self.target.clone())?;
 
@@ -54,7 +54,7 @@ impl UpdateOptions {
             let dep_item = pkg_dep_id.get_toml_item()?;
             let target_dep = Dependency::from_toml(crate_name, &dep_item);
             let pkg_manifest_path = pkg_id.get_manifest_path();
-            let source_dep = self.dep_options.to_dependency(pkg_manifest_path)?;
+            let source_dep = self.dep_cmd.to_dependency(pkg_manifest_path)?;
 
             if !self.change_inherit {
                 if !(inherit_mode == InheritMode::None) {
@@ -164,7 +164,7 @@ impl UpdateOptions {
 
         if self.package.is_none() {
             let space_manifest_path = ctx.get_space().get_root_manifest_path();
-            let space_source_dep = self.dep_options.to_dependency(space_manifest_path)?;
+            let space_source_dep = self.dep_cmd.to_dependency(space_manifest_path)?;
 
             let root_deps = ctx.get_space_mut().try_get_root_deps()?;
             let space_dep_id = root_deps
@@ -179,7 +179,7 @@ impl UpdateOptions {
                     tgt_dep.update(&space_source_dep);
                     let space_item = tgt_dep.to_toml();
                     let inline_condition =
-                        self.dep_options.features.is_some() || self.dep_options.optional.is_some();
+                        self.dep_cmd.features.is_some() || self.dep_cmd.optional.is_some();
                     let space_item_inline =
                         into_inline_table_item_if(inline_condition, space_item)?;
 
@@ -278,7 +278,7 @@ pub fn exec_update(args: &ArgMatches) -> CargoResult<()> {
     };
     let change_inherit = args.get_flag("change-inherit");
 
-    let dep_options = DepOptions {
+    let dep_cmd = DepCmd {
         dep_req: DepReq::resolve(&dep_req)?,
         path: None,
         git: None,
@@ -290,8 +290,8 @@ pub fn exec_update(args: &ArgMatches) -> CargoResult<()> {
         optional: None,
     };
 
-    let opts = UpdateOptions {
-        dep_options,
+    let opts = UpdateCmd {
+        dep_cmd,
 
         package,
         dev,
@@ -357,8 +357,8 @@ tokio = { workspace = true }
         println!("=== update_dependency: workspace before ===");
         println!("{workspace_before}");
 
-        UpdateOptions {
-            dep_options: DepOptions {
+        UpdateCmd {
+            dep_cmd: DepCmd {
                 dep_req: DepReq::resolve("serde@1.0.200").unwrap(),
                 path: None,
                 git: None,

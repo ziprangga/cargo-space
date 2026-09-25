@@ -1,3 +1,6 @@
+// This file contains code originally derived from cargo-edit and has been
+// modified and adapted for cargo-space.
+
 use anyhow::Result;
 
 pub use anyhow::Context;

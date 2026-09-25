@@ -8,7 +8,7 @@ use core_space::context::Writer;
 use core_space::manifest::build_table_dep;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct RemoveOptions {
+pub struct RemoveCmd {
     dependencies: Vec<String>,
 
     package: Option<String>,
@@ -17,7 +17,7 @@ pub struct RemoveOptions {
     target: Option<String>,
 }
 
-impl RemoveOptions {
+impl RemoveCmd {
     pub fn run(&self) -> CargoResult<()> {
         let (space_table, pkg_table) = build_table_dep(self.dev, self.build, self.target.clone())?;
 
@@ -197,7 +197,7 @@ pub fn exec_remove(args: &ArgMatches) -> CargoResult<()> {
 
     let target = args.get_one::<String>("target").cloned();
 
-    let opts = RemoveOptions {
+    let cmd = RemoveCmd {
         dependencies,
 
         package,
@@ -206,7 +206,7 @@ pub fn exec_remove(args: &ArgMatches) -> CargoResult<()> {
         target,
     };
 
-    opts.run()
+    cmd.run()
 }
 
 #[cfg(test)]
@@ -266,7 +266,7 @@ tokio = { workspace = true }
         println!("=== remove_multiple_dependencies: package before ===");
         println!("{package_before}");
 
-        RemoveOptions {
+        RemoveCmd {
             dependencies: vec!["serde".into(), "tokio".into()],
             package: None,
             dev: false,
@@ -308,7 +308,7 @@ tokio = { workspace = true }
         println!("=== remove_nonexistent_dependencies: package before ===");
         println!("{package_before}");
 
-        RemoveOptions {
+        RemoveCmd {
             dependencies: vec!["not-exist".into()],
             package: None,
             dev: false,
@@ -350,7 +350,7 @@ tokio = { workspace = true }
         println!("=== remove_dependencies_in_package: package before ===");
         println!("{package_before}");
 
-        RemoveOptions {
+        RemoveCmd {
             dependencies: vec!["serde".into()],
             package: Some("app".into()),
             dev: false,

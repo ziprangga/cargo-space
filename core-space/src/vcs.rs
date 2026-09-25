@@ -1,3 +1,6 @@
+// This file contains code originally derived from Cargo and has been
+// modified and adapted for cargo-space.
+
 use crate::errors::{CargoResult, error};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, ErrorKind, Write};

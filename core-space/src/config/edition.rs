@@ -1,3 +1,6 @@
+// This file contains code originally derived from Cargo and has been
+// modified and adapted for cargo-space.
+
 use std::str::FromStr;
 
 use crate::errors::Error;

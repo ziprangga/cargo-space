@@ -21,7 +21,7 @@ use core_space::vcs::GitRepo;
 use core_space::vcs::IgnoreList;
 
 #[derive(Debug)]
-pub struct NewOptions {
+pub struct NewCmd {
     name: String,
     edition: Option<String>,
     registry: Option<String>,
@@ -30,7 +30,7 @@ pub struct NewOptions {
     non_virtual: bool,
 }
 
-impl NewOptions {
+impl NewCmd {
     pub fn run(&self) -> CargoResult<()> {
         let path = PathBuf::from(&self.name);
 
@@ -176,7 +176,7 @@ pub fn exec_new(args: &ArgMatches) -> CargoResult<()> {
     let registry = args.get_one::<String>("registry").cloned();
     let non_virtual = args.get_flag("non-virtual");
 
-    let opts = NewOptions {
+    let cmd = NewCmd {
         non_vcs,
         name,
         edition,
@@ -184,5 +184,5 @@ pub fn exec_new(args: &ArgMatches) -> CargoResult<()> {
         non_virtual,
     };
 
-    opts.run()
+    cmd.run()
 }

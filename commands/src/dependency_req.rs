@@ -86,7 +86,7 @@ impl DepReq {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
-pub struct DepOptions {
+pub struct DepCmd {
     pub dep_req: DepReq,
 
     pub path: Option<PathBuf>,
@@ -102,7 +102,7 @@ pub struct DepOptions {
     pub optional: Option<bool>,
 }
 
-impl DepOptions {
+impl DepCmd {
     pub fn to_dependency(&self, manifest_path: &Path) -> CargoResult<Dependency> {
         let crate_name = self.dep_req.name();
         let version_req = self.dep_req.version_target();

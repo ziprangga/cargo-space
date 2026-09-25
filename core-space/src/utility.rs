@@ -1,3 +1,6 @@
+// This file contains code originally derived from Cargo and has been
+// modified and adapted for cargo-space.
+
 pub use rustc_hash::FxHashMap as HashMap;
 pub use rustc_hash::FxHashSet as HashSet;
 

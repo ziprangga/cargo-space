@@ -41,7 +41,7 @@ impl std::fmt::Display for NewPackageKind {
 }
 
 #[derive(Debug)]
-pub struct CreatePackageOption {
+pub struct CreatePkgCmd {
     path: PathBuf,
     name: Option<String>,
     kind: Option<NewPackageKind>,
@@ -52,7 +52,7 @@ pub struct CreatePackageOption {
     non_inherit: bool,
 }
 
-impl CreatePackageOption {
+impl CreatePkgCmd {
     pub fn run(&self) -> CargoResult<()> {
         let path = &self.path;
 
@@ -279,7 +279,7 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
         anyhow::bail!("the `--edition` option requires `--non-inherit`");
     }
 
-    let opts = CreatePackageOption {
+    let cmd = CreatePkgCmd {
         path,
         name,
         kind,
@@ -290,7 +290,7 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
         non_inherit,
     };
 
-    opts.run()?;
+    cmd.run()?;
 
     Ok(())
 }

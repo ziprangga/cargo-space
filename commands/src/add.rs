@@ -1,4 +1,4 @@
-use crate::dependency_req::DepOptions;
+use crate::dependency_req::DepCmd;
 use crate::dependency_req::DepReq;
 use crate::dependency_req::inherit_split;
 
@@ -20,8 +20,8 @@ use core_space::manifest::into_inline_table_item_if;
 use std::path::PathBuf;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct AddOptions {
-    dep_options: DepOptions,
+pub struct AddCmd {
+    dep_cmd: DepCmd,
 
     package: Option<String>,
     dev: bool,
@@ -30,11 +30,11 @@ pub struct AddOptions {
     private: RulesInherit,
 }
 
-impl AddOptions {
+impl AddCmd {
     pub fn run(&self) -> CargoResult<()> {
         let mut ctx = Context::discover()?;
 
-        let crate_name = self.dep_options.dep_req.name();
+        let crate_name = self.dep_cmd.dep_req.name();
 
         let (space_dep_table, pkg_dep_table) =
             build_table_dep(self.dev, self.build, self.target.clone())?;
@@ -82,7 +82,7 @@ impl AddOptions {
             } else {
                 let pkg_id = ctx.get_pkg_id_mut(pkg)?;
                 let pkg_manifest_path = pkg_id.get_manifest_path();
-                let dependency = self.dep_options.to_dependency(pkg_manifest_path)?;
+                let dependency = self.dep_cmd.to_dependency(pkg_manifest_path)?;
                 let (space_dep_item, pkg_dep_item) =
                     inherit_split(self.private.clone(), &dependency)?;
 
@@ -119,10 +119,10 @@ impl AddOptions {
 
         if self.package.is_none() {
             let space_manifest_path = ctx.get_space().get_root_manifest_path();
-            let dependency = self.dep_options.to_dependency(space_manifest_path)?;
+            let dependency = self.dep_cmd.to_dependency(space_manifest_path)?;
 
             let inline_condition =
-                self.dep_options.features.is_some() || self.dep_options.optional.is_some();
+                self.dep_cmd.features.is_some() || self.dep_cmd.optional.is_some();
 
             let space_depedency =
                 into_inline_table_item_if(inline_condition, dependency.to_toml())?;
@@ -255,7 +255,7 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
         RulesInherit::None
     };
 
-    let dep_options = DepOptions {
+    let dep_cmd = DepCmd {
         dep_req: DepReq::resolve(&dep_req)?,
         path,
         git,
@@ -267,8 +267,8 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
         optional,
     };
 
-    let opts = AddOptions {
-        dep_options,
+    let cmd = AddCmd {
+        dep_cmd,
 
         package,
         dev,
@@ -277,5 +277,5 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
         private,
     };
 
-    opts.run()
+    cmd.run()
 }

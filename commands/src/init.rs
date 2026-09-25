@@ -21,13 +21,13 @@ use crate::new::resolver_default;
 use crate::new::version_control;
 
 #[derive(Debug)]
-pub struct InitOptions {
+pub struct InitCmd {
     path: Option<PathBuf>,
     non_vcs: bool,
     non_virtual: bool,
 }
 
-impl InitOptions {
+impl InitCmd {
     pub fn run(&self) -> CargoResult<()> {
         let path = self.path.clone().unwrap_or(std::env::current_dir()?);
         let name = path.file_name().unwrap().to_string_lossy().into_owned();
@@ -140,13 +140,13 @@ pub fn exec_init(args: &ArgMatches) -> CargoResult<()> {
     let non_vcs = args.get_flag("non-vcs");
     let non_virtual = args.get_flag("non-virtual");
 
-    let opts = InitOptions {
+    let cmd = InitCmd {
         path,
         non_vcs,
         non_virtual,
     };
 
-    opts.run()
+    cmd.run()
 }
 
 #[cfg(test)]
@@ -159,7 +159,7 @@ mod tests {
     fn init_virtual_workspace_at_path() {
         let dir = tempdir().unwrap();
 
-        let opts = InitOptions {
+        let opts = InitCmd {
             path: Some(dir.path().to_path_buf()),
             non_vcs: true,
             non_virtual: false,
@@ -184,7 +184,7 @@ mod tests {
     fn init_non_virtual_workspace_at_path() {
         let dir = tempdir().unwrap();
 
-        let opts = InitOptions {
+        let opts = InitCmd {
             path: Some(dir.path().to_path_buf()),
             non_vcs: true,
             non_virtual: true,
@@ -215,7 +215,7 @@ mod tests {
         let old_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
 
-        let opts = InitOptions {
+        let opts = InitCmd {
             path: None,
             non_vcs: true,
             non_virtual: false,
@@ -245,13 +245,13 @@ mod tests {
         let old_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(root.path()).unwrap();
 
-        let opts = InitOptions {
+        let cmd = InitCmd {
             path: Some(PathBuf::from("workspace")),
             non_vcs: true,
             non_virtual: false,
         };
 
-        let result = opts.run();
+        let result = cmd.run();
 
         std::env::set_current_dir(old_dir).unwrap();
 
