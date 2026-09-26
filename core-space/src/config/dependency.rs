@@ -202,7 +202,7 @@ impl Dependency {
         }
     }
 
-    pub fn update(&mut self, other: &Self) {
+    pub fn merge_update(&mut self, other: &Self) {
         if !other.name.is_empty() {
             self.name = other.name.clone();
         }

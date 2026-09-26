@@ -2,6 +2,7 @@ use clap::{Arg, ArgAction, ArgMatches, Command};
 use std::path::PathBuf;
 
 use core_space::CargoResult;
+use core_space::config::PackageItems;
 use core_space::config::Workspace;
 use core_space::context::Change;
 use core_space::context::Context;
@@ -66,7 +67,65 @@ impl InitCmd {
             Context::discover()?
         };
 
-        if self.non_virtual {
+        let found_pkg_id = ctx.get_space().get_root_pkg_id().is_some();
+
+        if found_pkg_id {
+            let space_manifest = ctx.get_space_mut().try_get_manifest()?;
+            let table_path = TablePath::new().push("package");
+            let pkg_items = space_manifest.get_item_of_table(&table_path)?.clone();
+            let pkg_name = ctx
+                .get_space()
+                .get_root_pkg_id()
+                .unwrap()
+                .get_name()
+                .to_owned();
+
+            let package_items = PackageItems::from_toml(&pkg_items);
+            let space_item = workspace.to_toml();
+
+            ctx.add_modifier(
+                Modifier::insert_items_at(
+                    Change::new()
+                        .with_path(TablePath::new().push("workspace"))
+                        .with_item(space_item),
+                    InheritMode::None,
+                ),
+                Target::space(),
+            )?;
+
+            ctx.add_modifier(
+                Modifier::insert_items_at(
+                    Change::new()
+                        .with_path(TablePath::new().push("workspace").push("package"))
+                        .with_item(package_items.to_toml()),
+                    InheritMode::None,
+                ),
+                Target::space(),
+            )?;
+
+            ctx.add_modifier(
+                Modifier::insert_items_at(
+                    Change::new()
+                        .with_path(TablePath::new().push("package"))
+                        .with_item(package_items.to_toml()),
+                    InheritMode::Full,
+                ),
+                Target::space(),
+            )?;
+
+            ctx.add_modifier(
+                Modifier::update_key(
+                    Change::new()
+                        .with_path(TablePath::new().push("package"))
+                        .with_key("name")
+                        .with_item(pkg_name.into()),
+                    InheritMode::None,
+                ),
+                Target::space(),
+            )?;
+        }
+
+        if self.non_virtual && !found_pkg_id {
             let pkg_items = if !space_manifest_path.exists() {
                 package_items.to_toml()
             } else {
@@ -265,5 +324,55 @@ mod tests {
         println!("manifest:\n{manifest}");
 
         assert!(manifest_path.exists());
+    }
+
+    #[test]
+    fn init_existing_package_directory() {
+        let dir = tempdir().unwrap();
+
+        let manifest_path = dir.path().join(MANIFEST_FILENAME);
+        let src_dir = dir.path().join("src");
+        fs::create_dir_all(&src_dir).unwrap();
+
+        fs::write(src_dir.join("main.rs"), "fn main() {}\n").unwrap();
+
+        fs::write(
+            &manifest_path,
+            r#"[package]
+    name = "test-pkg"
+    version = "0.1.0"
+    edition = "2021"
+    "#,
+        )
+        .unwrap();
+
+        let old_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        let result = InitCmd {
+            path: None,
+            non_vcs: true,
+            non_virtual: true,
+        }
+        .run();
+
+        let ctx = Context::discover();
+
+        std::env::set_current_dir(old_dir).unwrap();
+
+        println!("result:\n{result:#?}");
+        println!("Context:\n{ctx:#?}");
+
+        result.unwrap();
+
+        let manifest = fs::read_to_string(&manifest_path).unwrap();
+
+        println!("manifest:\n{manifest}");
+
+        assert!(manifest.contains("[workspace]"));
+        assert!(manifest.contains("resolver = \"3\""));
+        assert!(manifest.contains("[workspace.package]"));
+        assert!(manifest.contains("[package]"));
+        assert!(manifest.contains("name = \"test-pkg\""));
     }
 }

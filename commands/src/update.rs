@@ -65,7 +65,7 @@ impl UpdateCmd {
                 }
 
                 if let Some(mut tgt_dep) = target_dep {
-                    tgt_dep.update(&source_dep);
+                    tgt_dep.merge_update(&source_dep);
                     let pkg_item = tgt_dep.to_toml();
                     let pkg_item_inline =
                         into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
@@ -95,7 +95,7 @@ impl UpdateCmd {
                         let mut tgt_dep = space_target_dep
                             .ok_or_else(|| error!("Dependency `{crate_name}` not found"))?;
 
-                        tgt_dep.update(&source_dep);
+                        tgt_dep.merge_update(&source_dep);
                         tgt_dep
                     }
 
@@ -115,15 +115,15 @@ impl UpdateCmd {
                         let space_dep = space_target_dep
                             .ok_or_else(|| error!("Dependency `{crate_name}` not found"))?;
 
-                        tgt_dep.update(&space_dep);
-                        tgt_dep.update(&source_dep);
+                        tgt_dep.merge_update(&space_dep);
+                        tgt_dep.merge_update(&source_dep);
                         tgt_dep
                     }
 
                     InheritMode::None => {
                         let mut tgt_dep = target_dep
                             .ok_or_else(|| error!("Dependency `{crate_name}` not found"))?;
-                        tgt_dep.update(&source_dep);
+                        tgt_dep.merge_update(&source_dep);
                         tgt_dep
                     }
                 };
@@ -176,7 +176,7 @@ impl UpdateCmd {
                 let space_target_dep = Dependency::from_toml(crate_name, &dep_item);
 
                 if let Some(mut tgt_dep) = space_target_dep {
-                    tgt_dep.update(&space_source_dep);
+                    tgt_dep.merge_update(&space_source_dep);
                     let space_item = tgt_dep.to_toml();
                     let inline_condition =
                         self.dep_cmd.features.is_some() || self.dep_cmd.optional.is_some();
