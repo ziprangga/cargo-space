@@ -7,7 +7,6 @@ use core_space::bail_out;
 use core_space::config::Edition;
 use core_space::config::PackageItems;
 use core_space::config::Workspace;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::MANIFEST_FILENAME;
 use core_space::context::Modifier;
@@ -62,10 +61,10 @@ impl NewCmd {
         let space_item = workspace.to_toml();
 
         ctx.add_modifier(
-            Modifier::insert_items_at(
-                Change::new()
-                    .with_path(TablePath::new().push("workspace"))
-                    .with_item(space_item),
+            Modifier::add_items_at(
+                TablePath::new().push("workspace"),
+                None,
+                space_item,
                 InheritMode::None,
             ),
             Target::Space,
@@ -77,20 +76,19 @@ impl NewCmd {
 
             ctx.add_modifier(
                 Modifier::add_key(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_key("name")
-                        .with_item(self.name.as_str().into()),
+                    TablePath::new().push("package"),
+                    "name",
+                    self.name.as_str().into(),
                     InheritMode::None,
                 ),
                 Target::space(),
             )?;
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_item(pkg_items),
+                Modifier::add_items_at(
+                    TablePath::new().push("package"),
+                    None,
+                    pkg_items,
                     InheritMode::Full,
                 ),
                 Target::Space,

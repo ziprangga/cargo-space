@@ -6,7 +6,6 @@ pub use metadata::DepId;
 pub use metadata::MANIFEST_FILENAME;
 pub use metadata::PkgId;
 pub use metadata::Space;
-pub use modifier::Change;
 pub use modifier::Modifier;
 pub use target::Target;
 pub use target::TargetConfig;

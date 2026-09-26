@@ -6,7 +6,6 @@ use core_space::CargoResult;
 use core_space::config::Dependency;
 use core_space::config::PackageItems;
 use core_space::config::Source;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::MANIFEST_FILENAME;
 use core_space::context::Modifier;
@@ -98,10 +97,9 @@ impl CreatePkgCmd {
 
         ctx.add_modifier(
             Modifier::add_key(
-                Change::new()
-                    .with_path(TablePath::new().push("package"))
-                    .with_key("name")
-                    .with_item(pkg_name.clone().into()),
+                TablePath::new().push("package"),
+                "name",
+                pkg_name.clone().into(),
                 InheritMode::None,
             ),
             Target::pkg(pkg_name.clone()),
@@ -115,10 +113,10 @@ impl CreatePkgCmd {
             let pkg_items = items.to_toml();
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_item(pkg_items),
+                Modifier::add_items_at(
+                    TablePath::new().push("package"),
+                    None,
+                    pkg_items,
                     InheritMode::None,
                 ),
                 Target::pkg(pkg_name.clone()),
@@ -126,13 +124,13 @@ impl CreatePkgCmd {
         } else {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("workspace").push("package");
-            let pkg_items = space_manifest.get_item_of_table(&table_path)?.clone();
+            let pkg_items = space_manifest.get_items_at(&table_path, None)?.clone();
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_item(pkg_items),
+                Modifier::add_items_at(
+                    TablePath::new().push("package"),
+                    None,
+                    pkg_items,
                     InheritMode::Full,
                 ),
                 Target::pkg(pkg_name.clone()),
@@ -159,10 +157,9 @@ impl CreatePkgCmd {
 
             ctx.add_modifier(
                 Modifier::add_key(
-                    Change::new()
-                        .with_path(TablePath::new().push("workspace").push("dependencies"))
-                        .with_key(pkg_name.clone())
-                        .with_item(item_inline),
+                    TablePath::new().push("workspace").push("dependencies"),
+                    pkg_name.clone(),
+                    item_inline,
                     InheritMode::None,
                 ),
                 Target::space(),
@@ -171,10 +168,9 @@ impl CreatePkgCmd {
 
         ctx.add_modifier(
             Modifier::update_key(
-                Change::new()
-                    .with_path(TablePath::new().push("workspace"))
-                    .with_key("members")
-                    .with_item(member_path.into()),
+                TablePath::new().push("workspace"),
+                "members",
+                member_path.into(),
                 InheritMode::None,
             ),
             Target::space(),

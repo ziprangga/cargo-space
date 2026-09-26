@@ -7,7 +7,6 @@ use core_space::CargoResult;
 use core_space::config::DataInherit;
 use core_space::config::Dependency;
 use core_space::config::RulesInherit;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::Modifier;
 use core_space::context::Target;
@@ -56,10 +55,9 @@ impl AddCmd {
 
                         ctx.add_modifier(
                             Modifier::add_key(
-                                Change::new()
-                                    .with_path(pkg_dep_table.clone())
-                                    .with_key(crate_name)
-                                    .with_item(pkg_item_inline),
+                                pkg_dep_table.clone(),
+                                crate_name,
+                                pkg_item_inline,
                                 inherit_mode,
                             ),
                             Target::pkg(pkg),
@@ -69,10 +67,9 @@ impl AddCmd {
                     if let Some(space_item) = space_dep_item {
                         ctx.add_modifier(
                             Modifier::update_key(
-                                Change::new()
-                                    .with_path(space_dep_table.clone())
-                                    .with_key(crate_name)
-                                    .with_item(space_item),
+                                space_dep_table.clone(),
+                                crate_name,
+                                space_item,
                                 InheritMode::None,
                             ),
                             Target::space(),
@@ -92,10 +89,9 @@ impl AddCmd {
 
                     ctx.add_modifier(
                         Modifier::add_key(
-                            Change::new()
-                                .with_path(pkg_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(pkg_item_inline),
+                            pkg_dep_table.clone(),
+                            crate_name,
+                            pkg_item_inline,
                             inherit_mode,
                         ),
                         Target::pkg(pkg),
@@ -105,10 +101,9 @@ impl AddCmd {
                 if let Some(space_item) = space_dep_item {
                     ctx.add_modifier(
                         Modifier::add_key(
-                            Change::new()
-                                .with_path(space_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(space_item),
+                            space_dep_table.clone(),
+                            crate_name,
+                            space_item,
                             InheritMode::None,
                         ),
                         Target::space(),
@@ -129,10 +124,9 @@ impl AddCmd {
 
             ctx.add_modifier(
                 Modifier::add_key(
-                    Change::new()
-                        .with_path(space_dep_table)
-                        .with_key(crate_name)
-                        .with_item(space_depedency),
+                    space_dep_table,
+                    crate_name,
+                    space_depedency,
                     InheritMode::None,
                 ),
                 Target::space(),

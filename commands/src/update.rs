@@ -7,7 +7,6 @@ use core_space::CargoResult;
 use core_space::config::DataInherit;
 use core_space::config::Dependency;
 use core_space::config::RulesInherit;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::Modifier;
 use core_space::context::Target;
@@ -71,10 +70,9 @@ impl UpdateCmd {
                         into_inline_table_item_if(!self.private.is_all(), pkg_item)?;
                     ctx.add_modifier(
                         Modifier::update_key(
-                            Change::new()
-                                .with_path(pkg_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(pkg_item_inline),
+                            pkg_dep_table.clone(),
+                            crate_name,
+                            pkg_item_inline,
                             InheritMode::None,
                         ),
                         Target::pkg(pkg),
@@ -137,10 +135,9 @@ impl UpdateCmd {
 
                     ctx.add_modifier(
                         Modifier::add_key(
-                            Change::new()
-                                .with_path(pkg_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(pkg_item_inline),
+                            pkg_dep_table.clone(),
+                            crate_name,
+                            pkg_item_inline,
                             inherit_mode,
                         ),
                         Target::pkg(pkg),
@@ -150,10 +147,9 @@ impl UpdateCmd {
                 if let Some(space_item) = space_dep_item {
                     ctx.add_modifier(
                         Modifier::add_key(
-                            Change::new()
-                                .with_path(space_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(space_item),
+                            space_dep_table.clone(),
+                            crate_name,
+                            space_item,
                             InheritMode::None,
                         ),
                         Target::space(),
@@ -185,10 +181,9 @@ impl UpdateCmd {
 
                     ctx.add_modifier(
                         Modifier::update_key(
-                            Change::new()
-                                .with_path(space_dep_table.clone())
-                                .with_key(crate_name)
-                                .with_item(space_item_inline),
+                            space_dep_table.clone(),
+                            crate_name,
+                            space_item_inline,
                             InheritMode::None,
                         ),
                         Target::space(),

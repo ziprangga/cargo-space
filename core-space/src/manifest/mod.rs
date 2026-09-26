@@ -77,19 +77,6 @@ impl Manifest {
 }
 
 impl Manifest {
-    pub fn get_item_of_key(&self, table: &TablePath, key: &str) -> CargoResult<&Item> {
-        let item = self.toml_manifest.get_table_like(table.as_slice())?;
-
-        item.get(key)
-            .ok_or_else(|| error!("`{key}` could not be found"))
-    }
-
-    pub fn get_item_of_table(&self, table: &TablePath) -> CargoResult<&Item> {
-        self.toml_manifest
-            .get_table_like(table.as_slice())
-            .with_context(|| format!("Item of `{}` could not be found", table))
-    }
-
     pub fn is_table_exist(&self, table: &TablePath) -> bool {
         self.toml_manifest.get_table_like(table.as_slice()).is_ok()
     }
@@ -119,6 +106,115 @@ impl Manifest {
 }
 
 impl Manifest {
+    pub fn get_array(&self, table: &TablePath, key: &str) -> CargoResult<&Array> {
+        let item = self.toml_manifest.get_table_like(table.as_slice())?;
+
+        item.get(key)
+            .and_then(Item::as_array)
+            .ok_or_else(|| error!("`{key}` is not an array"))
+    }
+
+    pub fn add_value_to_array(
+        &mut self,
+        table: &TablePath,
+        key: &str,
+        value: &Item,
+    ) -> CargoResult<()> {
+        let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let item = table
+            .get_mut(key)
+            .ok_or_else(|| error!("`{key}` could not be found"))?;
+
+        let array = item
+            .as_array_mut()
+            .ok_or_else(|| error!("`{key}` is not an array"))?;
+
+        let value = value
+            .as_value()
+            .ok_or_else(|| error!("Value is not a value"))?;
+
+        array.push(value.clone());
+
+        Ok(())
+    }
+
+    pub fn update_value_of_array(
+        &mut self,
+        table: &TablePath,
+        key: &str,
+        old_value: Option<&Item>,
+        value: &Item,
+    ) -> CargoResult<()> {
+        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let target_item = base_table
+            .get_mut(key)
+            .ok_or_else(|| error!("`{key}` could not be found"))?;
+
+        let target_array = target_item
+            .as_array_mut()
+            .ok_or_else(|| error!("`{key}` is not an array"))?;
+
+        let source_value = value
+            .as_value()
+            .ok_or_else(|| error!("`{key}` value is not a value"))?;
+
+        if let Some(old_value) = old_value.and_then(Item::as_value) {
+            if let Some(old_str) = old_value.as_str() {
+                if let Some(existing) = target_array
+                    .iter_mut()
+                    .find(|item| item.as_str() == Some(old_str))
+                {
+                    *existing = source_value.clone();
+                    return Ok(());
+                }
+            }
+        }
+
+        target_array.push(source_value.clone());
+
+        Ok(())
+    }
+
+    pub fn remove_value_from_array(
+        &mut self,
+        table: &TablePath,
+        key: &str,
+        value: &Item,
+    ) -> CargoResult<()> {
+        let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let item = table
+            .get_mut(key)
+            .ok_or_else(|| error!("`{key}` could not be found"))?;
+
+        let array = item
+            .as_array_mut()
+            .ok_or_else(|| error!("`{key}` is not an array"))?;
+
+        let value = value
+            .as_value()
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| error!("Value is not a string"))?;
+
+        let index = array.iter().position(|item| item.as_str() == Some(value));
+
+        if let Some(idx) = index {
+            array.remove(idx);
+        }
+
+        Ok(())
+    }
+
+    // ===============================================
+    pub fn get_key(&self, table: &TablePath, key: &str) -> CargoResult<&Item> {
+        let item = self.toml_manifest.get_table_like(table.as_slice())?;
+
+        item.get(key)
+            .ok_or_else(|| error!("`{key}` could not be found"))
+    }
+
     pub fn add_key(
         &mut self,
         table: &TablePath,
@@ -156,22 +252,7 @@ impl Manifest {
             .get_mut(key)
             .ok_or_else(|| error!("`{key}` could not be found"))?;
 
-        if let Some(old_array_of_tables) = target_item.as_array_of_tables_mut() {
-            if let Some(new_table) = source_item.as_table() {
-                // Target the specific instance inside the array (e.g., index 0)
-                if let Some(first_table) = old_array_of_tables.get_mut(0) {
-                    let old_decor = first_table.decor().clone();
-                    let old_position = first_table.position();
-
-                    // Overwrite that specific table entry's values
-                    *first_table = new_table.clone();
-
-                    // Reapply the original header layout decoration and line placement
-                    *first_table.decor_mut() = old_decor;
-                    first_table.set_position(old_position);
-                }
-            }
-        } else if let Some(old_table) = target_item.as_table_mut() {
+        if let Some(old_table) = target_item.as_table_mut() {
             if let Some(new_table) = source_item.as_table() {
                 // Keep the old layout decoration (headers, bracket formatting, spacing, comments)
                 let old_decor = old_table.decor().clone();
@@ -188,14 +269,14 @@ impl Manifest {
             }
         } else if let Some(old_value) = target_item.as_value_mut() {
             match old_value {
-                Value::Array(array) => {
-                    if !array
-                        .iter()
-                        .any(|item| item.as_str() == source_item.as_str())
-                    {
-                        if let Some(new_value) = source_item.as_value() {
-                            array.push(new_value);
-                        }
+                Value::Array(old_array) => {
+                    if let Some(new_array) = source_item.as_value().and_then(Value::as_array) {
+                        let old_decor = old_array.decor().clone();
+
+                        old_array.clear();
+                        old_array.extend(new_array.iter().cloned());
+
+                        *old_array.decor_mut() = old_decor;
                     }
                 }
                 Value::InlineTable(old_inline_table) => {
@@ -255,111 +336,38 @@ impl Manifest {
         Ok(())
     }
 
-    pub fn remove_key_or_value(
-        &mut self,
-        table: &TablePath,
-        key: &str,
-        value: Option<&Item>,
-    ) -> CargoResult<()> {
+    pub fn remove_key(&mut self, table: &TablePath, key: &str) -> CargoResult<()> {
         let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        match value {
-            Some(val_remove) => {
-                let item = table
-                    .get_mut(key)
-                    .ok_or_else(|| error!("`{key}` could not be found"))?;
-
-                let array = item
-                    .as_array_mut()
-                    .ok_or_else(|| error!("`{key}` is not an array"))?;
-
-                let val_remove = val_remove
-                    .as_value()
-                    .and_then(|value| value.as_str())
-                    .ok_or_else(|| error!("Value is not a string"))?;
-
-                let index = array
-                    .iter()
-                    .position(|item| item.as_str() == Some(val_remove));
-
-                if let Some(idx) = index {
-                    array.remove(idx);
-                }
-
-                Ok(())
-            }
-            None => {
-                if let Some(target_table) = table.as_table_like_mut() {
-                    target_table.remove(key);
-                }
-
-                Ok(())
-            }
-        }
-    }
-
-    pub fn replace_items_at(
-        &mut self,
-        table: &TablePath,
-        key: Option<&str>,
-        value: &Item,
-        inherit_mode: &InheritMode,
-    ) -> CargoResult<()> {
-        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
-
-        let source_item = if let Some(k) = key {
-            if base_table.is_inline_table() {
-                value.clone()
-            } else {
-                inherit_mode.resolve_key(k.to_string(), value.clone())?
-            }
-        } else {
-            inherit_mode.resolve_items(value.clone())?
-        };
-
-        let table_like_source = source_item
-            .as_table_like()
-            .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
-
-        let target_item = match key {
-            Some(key) => base_table
-                .get_mut(key)
-                .ok_or_else(|| error!("`{key}` could not be found"))?,
-            None => base_table,
-        };
-
-        if let Some(array_of_tables) = target_item.as_array_of_tables_mut() {
-            // Handle Array of Tables: Wipe and replace contents of the targeted instance (e.g., index 0)
-            if let Some(target_table) = array_of_tables.get_mut(0) {
-                target_table.clear();
-                for (key, value) in table_like_source.iter() {
-                    target_table.insert(key, value.clone());
-                }
-            }
-        } else if let Some(old_value) = target_item.as_value_mut() {
-            if let Some(inline_table) = old_value.as_inline_table_mut() {
-                // Handle Inline Table: Clear values and insert new values as raw inline Values to protect formatting
-                inline_table.clear();
-                for (key, value) in table_like_source.iter() {
-                    if let Some(new_value) = value.as_value() {
-                        inline_table.insert(key, new_value.clone());
-                    }
-                }
-            }
-        } else if let Some(target_table) = target_item.as_table_mut() {
-            // Handle Standard Table: Clear contents but preserve header comments and original line placement
-            target_table.clear();
-            for (key, value) in table_like_source.iter() {
-                target_table.insert(key, value.clone());
-            }
-        } else {
-            return Err(error!("Item is not a table"));
+        if let Some(target_table) = table.as_table_like_mut() {
+            target_table.remove(key);
         }
 
         Ok(())
     }
 
-    pub fn insert_items_at(
+    // ===============================================
+    pub fn get_items_at(&self, table: &TablePath, key: Option<&str>) -> CargoResult<&Item> {
+        let item = self
+            .toml_manifest
+            .get_table_like(table.as_slice())
+            .with_context(|| format!("Item of `{}` could not be found", table))?;
+
+        match key {
+            Some(key) => {
+                let item = item
+                    .get(key)
+                    .with_context(|| format!("Item of `{key}` could not be found"))?;
+
+                item.as_table_like()
+                    .map(|_| item)
+                    .ok_or_else(|| error!("Item of `{key}` is not a table-like type"))
+            }
+            None => Ok(item),
+        }
+    }
+
+    pub fn add_items_at(
         &mut self,
         table: &TablePath,
         key: Option<&str>,
@@ -391,26 +399,118 @@ impl Manifest {
             None => base_table,
         };
 
-        if let Some(array_of_tables) = target_item.as_array_of_tables_mut() {
-            // Handle Array of Tables: Merge into the first/last targeted block instance
-            if let Some(target_table) = array_of_tables.get_mut(0) {
-                for (key, value) in table_like_source.iter() {
-                    target_table.insert(key, value.clone());
-                }
-            }
-        } else if let Some(old_value) = target_item.as_value_mut() {
+        if let Some(old_value) = target_item.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 // Handle Inline Table: Merge inside the curly braces `{ ... }`
                 for (key, value) in table_like_source.iter() {
-                    if let Some(value) = value.as_value() {
-                        inline_table.insert(key, value.clone());
+                    if inline_table.get(key).is_none() {
+                        if let Some(value) = value.as_value() {
+                            inline_table.insert(key, value.clone());
+                        }
                     }
                 }
             }
         } else if let Some(target_table) = target_item.as_table_mut() {
             // Handle Standard Table: Merge fields cleanly
             for (key, value) in table_like_source.iter() {
+                if target_table.get(key).is_none() {
+                    target_table.insert(key, value.clone());
+                }
+            }
+        } else {
+            return Err(error!("Item is not a table"));
+        }
+
+        Ok(())
+    }
+
+    pub fn update_items_at(
+        &mut self,
+        table: &TablePath,
+        key: Option<&str>,
+        value: &Item,
+        inherit_mode: &InheritMode,
+    ) -> CargoResult<()> {
+        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let source_item = if let Some(k) = key {
+            if base_table.is_inline_table() {
+                value.clone()
+            } else {
+                inherit_mode.resolve_key(k.to_string(), value.clone())?
+            }
+        } else {
+            inherit_mode.resolve_items(value.clone())?
+        };
+
+        let table_like_source = source_item
+            .as_table_like()
+            .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
+
+        let target_item = match key {
+            Some(key) => base_table
+                .get_mut(key)
+                .ok_or_else(|| error!("`{key}` could not be found"))?,
+            None => base_table,
+        };
+
+        if let Some(old_value) = target_item.as_value_mut() {
+            if let Some(inline_table) = old_value.as_inline_table_mut() {
+                for (key, value) in table_like_source.iter() {
+                    if let Some(new_value) = value.as_value() {
+                        inline_table.insert(key, new_value.clone());
+                    }
+                }
+            }
+        } else if let Some(target_table) = target_item.as_table_mut() {
+            for (key, value) in table_like_source.iter() {
                 target_table.insert(key, value.clone());
+            }
+        } else {
+            return Err(error!("Item is not a table"));
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_items_at(
+        &mut self,
+        table: &TablePath,
+        key: Option<&str>,
+        targets: Option<&[String]>,
+    ) -> CargoResult<()> {
+        let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
+
+        let target_item = match key {
+            Some(key) => base_table
+                .get_mut(key)
+                .ok_or_else(|| error!("`{key}` could not be found"))?,
+            None => base_table,
+        };
+
+        if let Some(old_value) = target_item.as_value_mut() {
+            if let Some(inline_table) = old_value.as_inline_table_mut() {
+                match targets {
+                    Some(targets) => {
+                        for key in targets {
+                            inline_table.remove(key);
+                        }
+                    }
+                    None => {
+                        inline_table.clear();
+                    }
+                }
+            }
+        } else if let Some(target_table) = target_item.as_table_mut() {
+            match targets {
+                Some(targets) => {
+                    for key in targets {
+                        target_table.remove(key);
+                    }
+                }
+                None => {
+                    target_table.clear();
+                }
             }
         } else {
             return Err(error!("Item is not a table"));

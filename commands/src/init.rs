@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use core_space::CargoResult;
 use core_space::config::PackageItems;
 use core_space::config::Workspace;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::MANIFEST_FILENAME;
 use core_space::context::Modifier;
@@ -53,10 +52,10 @@ impl InitCmd {
             let mut ctx = Context::new().with_space(space);
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("workspace"))
-                        .with_item(space_item),
+                Modifier::add_items_at(
+                    TablePath::new().push("workspace"),
+                    None,
+                    space_item,
                     InheritMode::None,
                 ),
                 Target::Space,
@@ -72,7 +71,7 @@ impl InitCmd {
         if found_pkg_id {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("package");
-            let pkg_items = space_manifest.get_item_of_table(&table_path)?.clone();
+            let pkg_items = space_manifest.get_items_at(&table_path, None)?.clone();
             let pkg_name = ctx
                 .get_space()
                 .get_root_pkg_id()
@@ -84,30 +83,30 @@ impl InitCmd {
             let space_item = workspace.to_toml();
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("workspace"))
-                        .with_item(space_item),
+                Modifier::add_items_at(
+                    TablePath::new().push("workspace"),
+                    None,
+                    space_item,
                     InheritMode::None,
                 ),
                 Target::space(),
             )?;
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("workspace").push("package"))
-                        .with_item(package_items.to_toml()),
+                Modifier::add_items_at(
+                    TablePath::new().push("workspace").push("package"),
+                    None,
+                    package_items.to_toml(),
                     InheritMode::None,
                 ),
                 Target::space(),
             )?;
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_item(package_items.to_toml()),
+                Modifier::update_items_at(
+                    TablePath::new().push("package"),
+                    None,
+                    package_items.to_toml(),
                     InheritMode::Full,
                 ),
                 Target::space(),
@@ -115,10 +114,9 @@ impl InitCmd {
 
             ctx.add_modifier(
                 Modifier::update_key(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_key("name")
-                        .with_item(pkg_name.into()),
+                    TablePath::new().push("package"),
+                    "name",
+                    pkg_name.into(),
                     InheritMode::None,
                 ),
                 Target::space(),
@@ -131,27 +129,26 @@ impl InitCmd {
             } else {
                 let space_manifest = ctx.get_space_mut().try_get_manifest()?;
                 let table_path = TablePath::new().push("workspace").push("package");
-                space_manifest.get_item_of_table(&table_path)?.clone()
+                space_manifest.get_items_at(&table_path, None)?.clone()
             };
 
             build_non_virtual_src(&path)?;
 
             ctx.add_modifier(
                 Modifier::add_key(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_key("name")
-                        .with_item(into_item(name)),
+                    TablePath::new().push("package"),
+                    "name",
+                    into_item(name),
                     InheritMode::None,
                 ),
                 Target::space(),
             )?;
 
             ctx.add_modifier(
-                Modifier::insert_items_at(
-                    Change::new()
-                        .with_path(TablePath::new().push("package"))
-                        .with_item(pkg_items),
+                Modifier::add_items_at(
+                    TablePath::new().push("package"),
+                    None,
+                    pkg_items,
                     InheritMode::Full,
                 ),
                 Target::Space,

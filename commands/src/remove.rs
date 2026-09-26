@@ -1,6 +1,5 @@
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use core_space::CargoResult;
-use core_space::context::Change;
 use core_space::context::Context;
 use core_space::context::Modifier;
 use core_space::context::Target;
@@ -49,11 +48,7 @@ impl RemoveCmd {
 
             for dep_name in dep_names {
                 ctx.add_modifier(
-                    Modifier::remove_key_or_value(
-                        Change::new()
-                            .with_path(pkg_table.clone())
-                            .with_key(dep_name),
-                    ),
+                    Modifier::remove_key(pkg_table.clone(), dep_name),
                     Target::pkg(pkg),
                 )?;
             }
@@ -91,11 +86,7 @@ impl RemoveCmd {
 
                     for dep_name in dep_names {
                         ctx.add_modifier(
-                            Modifier::remove_key_or_value(
-                                Change::new()
-                                    .with_path(pkg_table.clone())
-                                    .with_key(dep_name),
-                            ),
+                            Modifier::remove_key(pkg_table.clone(), dep_name),
                             Target::pkg(pkg_id.get_name()),
                         )?;
                     }
@@ -124,11 +115,7 @@ impl RemoveCmd {
 
             for dep_name in dep_names {
                 ctx.add_modifier(
-                    Modifier::remove_key_or_value(
-                        Change::new()
-                            .with_path(space_table.clone())
-                            .with_key(dep_name),
-                    ),
+                    Modifier::remove_key(space_table.clone(), dep_name),
                     Target::space(),
                 )?;
             }

@@ -1,4 +1,4 @@
-use crate::errors::{CargoResult, error};
+use crate::errors::CargoResult;
 use crate::manifest::InheritMode;
 use crate::manifest::Item;
 use crate::manifest::Manifest;
@@ -6,142 +6,139 @@ use crate::manifest::TablePath;
 
 #[derive(Debug, Clone, Default)]
 pub enum Modifier {
-    AddKey(Change, InheritMode),
+    AddKey(TablePath, String, Item, InheritMode),
 
-    UpdateKey(Change, InheritMode),
+    UpdateKey(TablePath, String, Item, InheritMode),
 
-    RemoveKeyOrValue(Change),
+    RemoveKey(TablePath, String),
 
-    ReplaceItemsAt(Change, InheritMode),
+    AddItemsAt(TablePath, Option<String>, Item, InheritMode),
 
-    InsertItemsAt(Change, InheritMode),
+    UpdateItemsAt(TablePath, Option<String>, Item, InheritMode),
+
+    RemoveItemsAt(TablePath, Option<String>, Option<Vec<String>>),
+
+    AddValueToArray(TablePath, String, Item),
+
+    UpdateValueOfArray(TablePath, String, Option<Item>, Item),
+
+    RemoveValueFromArray(TablePath, String, Item),
 
     #[default]
     None,
 }
 
 impl Modifier {
-    pub fn add_key(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::AddKey(change, mode.into())
+    pub fn add_key(
+        table_path: TablePath,
+        key: impl Into<String>,
+        value: Item,
+        mode: impl Into<InheritMode>,
+    ) -> Self {
+        Self::AddKey(table_path, key.into(), value, mode.into())
     }
 
-    pub fn update_key(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::UpdateKey(change, mode.into())
+    pub fn update_key(
+        table_path: TablePath,
+        key: impl Into<String>,
+        value: Item,
+        mode: impl Into<InheritMode>,
+    ) -> Self {
+        Self::UpdateKey(table_path, key.into(), value, mode.into())
     }
 
-    pub fn remove_key_or_value(change: Change) -> Self {
-        Self::RemoveKeyOrValue(change)
+    pub fn remove_key(table_path: TablePath, key: impl Into<String>) -> Self {
+        Self::RemoveKey(table_path, key.into())
     }
 
-    pub fn replace_items_at(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::ReplaceItemsAt(change, mode.into())
+    pub fn add_items_at(
+        table_path: TablePath,
+        key: Option<String>,
+        value: Item,
+        mode: impl Into<InheritMode>,
+    ) -> Self {
+        Self::AddItemsAt(table_path, key, value, mode.into())
     }
 
-    pub fn insert_items_at(change: Change, mode: impl Into<InheritMode>) -> Self {
-        Self::InsertItemsAt(change, mode.into())
+    pub fn update_items_at(
+        table_path: TablePath,
+        key: Option<String>,
+        value: Item,
+        mode: impl Into<InheritMode>,
+    ) -> Self {
+        Self::UpdateItemsAt(table_path, key, value, mode.into())
+    }
+
+    pub fn remove_items_at(
+        table_path: TablePath,
+        key: Option<String>,
+        targets: Option<Vec<String>>,
+    ) -> Self {
+        Self::RemoveItemsAt(table_path, key, targets)
+    }
+
+    pub fn add_value_to_array(table_path: TablePath, key: impl Into<String>, value: Item) -> Self {
+        Self::AddValueToArray(table_path, key.into(), value)
+    }
+
+    pub fn update_value_of_array(
+        table_path: TablePath,
+        key: impl Into<String>,
+        old_value: Option<Item>,
+        value: Item,
+    ) -> Self {
+        Self::UpdateValueOfArray(table_path, key.into(), old_value, value)
+    }
+
+    pub fn remove_value_from_array(
+        table_path: TablePath,
+        key: impl Into<String>,
+        value: Item,
+    ) -> Self {
+        Self::RemoveValueFromArray(table_path, key.into(), value)
     }
 
     pub fn apply(&self, manifest: &mut Manifest) -> CargoResult<()> {
         match self {
-            Self::AddKey(change, mode) => {
-                let key = change
-                    .key()
-                    .ok_or_else(|| error!("Add key requires a key"))?;
-
-                let item = change
-                    .item()
-                    .ok_or_else(|| error!("Add key requires an item"))?;
-
-                manifest.add_key(change.path(), key, &item, mode)?;
+            Self::AddKey(table_path, key, value, mode) => {
+                manifest.add_key(table_path, key, value, mode)?;
             }
 
-            Self::UpdateKey(change, mode) => {
-                let key = change
-                    .key()
-                    .ok_or_else(|| error!("Update key requires a key"))?;
-
-                let item = change
-                    .item()
-                    .ok_or_else(|| error!("Update key requires an item"))?;
-
-                manifest.update_key(change.path(), key, &item, mode)?;
+            Self::UpdateKey(table_path, key, value, mode) => {
+                manifest.update_key(table_path, key, value, mode)?;
             }
 
-            Self::RemoveKeyOrValue(change) => {
-                let key = change
-                    .key()
-                    .ok_or_else(|| error!("Remove key or value requires a key"))?;
-
-                manifest.remove_key_or_value(change.path(), key, change.item())?;
+            Self::RemoveKey(table_path, key) => {
+                manifest.remove_key(table_path, key)?;
             }
 
-            Self::ReplaceItemsAt(change, mode) => {
-                let item = change
-                    .item()
-                    .ok_or_else(|| error!("Replace items requires an item"))?;
-
-                manifest.replace_items_at(change.path(), change.key(), &item, mode)?;
+            Self::AddItemsAt(table_path, key, value, mode) => {
+                manifest.add_items_at(table_path, key.as_deref(), value, mode)?;
             }
 
-            Self::InsertItemsAt(change, mode) => {
-                let item = change
-                    .item()
-                    .ok_or_else(|| error!("Insert items requires an item"))?;
+            Self::UpdateItemsAt(table_path, key, value, mode) => {
+                manifest.update_items_at(table_path, key.as_deref(), value, mode)?;
+            }
 
-                manifest.insert_items_at(change.path(), change.key(), &item, mode)?;
+            Self::RemoveItemsAt(table_path, key, targets) => {
+                manifest.remove_items_at(table_path, key.as_deref(), targets.as_deref())?;
+            }
+
+            Self::AddValueToArray(table_path, key, value) => {
+                manifest.add_value_to_array(table_path, key, value)?;
+            }
+
+            Self::UpdateValueOfArray(table_path, key, old_value, value) => {
+                manifest.update_value_of_array(table_path, key, old_value.as_ref(), value)?;
+            }
+
+            Self::RemoveValueFromArray(table_path, key, value) => {
+                manifest.remove_value_from_array(table_path, key, value)?;
             }
 
             Self::None => {}
         }
 
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Change {
-    path: TablePath,
-    key: Option<String>,
-    item: Option<Item>,
-}
-
-impl Change {
-    pub fn new() -> Self {
-        Self {
-            path: TablePath::default(),
-            key: None,
-            item: None,
-        }
-    }
-
-    pub fn with_path(mut self, path: TablePath) -> Self {
-        self.path = path;
-        self
-    }
-
-    pub fn with_key(mut self, key: impl Into<String>) -> Self {
-        self.key = Some(key.into());
-        self
-    }
-
-    pub fn with_item(mut self, item: Item) -> Self {
-        self.item = Some(item);
-        self
-    }
-
-    pub fn path(&self) -> &TablePath {
-        &self.path
-    }
-
-    pub fn key(&self) -> Option<&str> {
-        self.key.as_deref()
-    }
-
-    pub fn item(&self) -> Option<&Item> {
-        self.item.as_ref()
-    }
-
-    pub fn into_parts(self) -> (TablePath, Option<String>, Option<Item>) {
-        (self.path, self.key, self.item)
     }
 }
