@@ -12,11 +12,11 @@ pub enum Modifier {
 
     RemoveKey(TablePath, String),
 
-    AddItemsAt(TablePath, Option<String>, Item, InheritMode),
+    AddItemsAt(TablePath, Item, InheritMode),
 
-    UpdateItemsAt(TablePath, Option<String>, Item, InheritMode),
+    UpdateItemsAt(TablePath, Item, InheritMode),
 
-    RemoveItemsAt(TablePath, Option<String>, Option<Vec<String>>),
+    RemoveItemsAt(TablePath, Option<Vec<String>>),
 
     AddValueToArray(TablePath, String, Item),
 
@@ -51,30 +51,21 @@ impl Modifier {
         Self::RemoveKey(table_path, key.into())
     }
 
-    pub fn add_items_at(
-        table_path: TablePath,
-        key: Option<String>,
-        value: Item,
-        mode: impl Into<InheritMode>,
-    ) -> Self {
-        Self::AddItemsAt(table_path, key, value, mode.into())
+    pub fn add_items_at(table_path: TablePath, value: Item, mode: impl Into<InheritMode>) -> Self {
+        Self::AddItemsAt(table_path, value, mode.into())
     }
 
     pub fn update_items_at(
         table_path: TablePath,
-        key: Option<String>,
+
         value: Item,
         mode: impl Into<InheritMode>,
     ) -> Self {
-        Self::UpdateItemsAt(table_path, key, value, mode.into())
+        Self::UpdateItemsAt(table_path, value, mode.into())
     }
 
-    pub fn remove_items_at(
-        table_path: TablePath,
-        key: Option<String>,
-        targets: Option<Vec<String>>,
-    ) -> Self {
-        Self::RemoveItemsAt(table_path, key, targets)
+    pub fn remove_items_at(table_path: TablePath, targets: Option<Vec<String>>) -> Self {
+        Self::RemoveItemsAt(table_path, targets)
     }
 
     pub fn add_value_to_array(table_path: TablePath, key: impl Into<String>, value: Item) -> Self {
@@ -112,16 +103,16 @@ impl Modifier {
                 manifest.remove_key(table_path, key)?;
             }
 
-            Self::AddItemsAt(table_path, key, value, mode) => {
-                manifest.add_items_at(table_path, key.as_deref(), value, mode)?;
+            Self::AddItemsAt(table_path, value, mode) => {
+                manifest.add_items_at(table_path, value, mode)?;
             }
 
-            Self::UpdateItemsAt(table_path, key, value, mode) => {
-                manifest.update_items_at(table_path, key.as_deref(), value, mode)?;
+            Self::UpdateItemsAt(table_path, value, mode) => {
+                manifest.update_items_at(table_path, value, mode)?;
             }
 
-            Self::RemoveItemsAt(table_path, key, targets) => {
-                manifest.remove_items_at(table_path, key.as_deref(), targets.as_deref())?;
+            Self::RemoveItemsAt(table_path, targets) => {
+                manifest.remove_items_at(table_path, targets.as_deref())?;
             }
 
             Self::AddValueToArray(table_path, key, value) => {

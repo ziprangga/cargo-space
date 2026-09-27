@@ -54,7 +54,6 @@ impl InitCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("workspace"),
-                    None,
                     space_item,
                     InheritMode::None,
                 ),
@@ -71,7 +70,7 @@ impl InitCmd {
         if found_pkg_id {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("package");
-            let pkg_items = space_manifest.get_items_at(&table_path, None)?.clone();
+            let pkg_items = space_manifest.get_items_at(&table_path)?.clone();
             let pkg_name = ctx
                 .get_space()
                 .get_root_pkg_id()
@@ -85,7 +84,6 @@ impl InitCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("workspace"),
-                    None,
                     space_item,
                     InheritMode::None,
                 ),
@@ -95,7 +93,6 @@ impl InitCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("workspace").push("package"),
-                    None,
                     package_items.to_toml(),
                     InheritMode::None,
                 ),
@@ -105,7 +102,6 @@ impl InitCmd {
             ctx.add_modifier(
                 Modifier::update_items_at(
                     TablePath::new().push("package"),
-                    None,
                     package_items.to_toml(),
                     InheritMode::Full,
                 ),
@@ -129,7 +125,7 @@ impl InitCmd {
             } else {
                 let space_manifest = ctx.get_space_mut().try_get_manifest()?;
                 let table_path = TablePath::new().push("workspace").push("package");
-                space_manifest.get_items_at(&table_path, None)?.clone()
+                space_manifest.get_items_at(&table_path)?.clone()
             };
 
             build_non_virtual_src(&path)?;
@@ -147,7 +143,6 @@ impl InitCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("package"),
-                    None,
                     pkg_items,
                     InheritMode::Full,
                 ),

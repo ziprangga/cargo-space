@@ -115,7 +115,6 @@ impl CreatePkgCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("package"),
-                    None,
                     pkg_items,
                     InheritMode::None,
                 ),
@@ -124,12 +123,11 @@ impl CreatePkgCmd {
         } else {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("workspace").push("package");
-            let pkg_items = space_manifest.get_items_at(&table_path, None)?.clone();
+            let pkg_items = space_manifest.get_items_at(&table_path)?.clone();
 
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("package"),
-                    None,
                     pkg_items,
                     InheritMode::Full,
                 ),
@@ -167,11 +165,10 @@ impl CreatePkgCmd {
         }
 
         ctx.add_modifier(
-            Modifier::update_key(
+            Modifier::add_value_to_array(
                 TablePath::new().push("workspace"),
                 "members",
                 member_path.into(),
-                InheritMode::None,
             ),
             Target::space(),
         )?;
@@ -289,4 +286,295 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
     cmd.run()?;
 
     Ok(())
+}
+
+// =========================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    fn setup_workspace() -> tempfile::TempDir {
+        let dir = tempdir().unwrap();
+
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            r#"
+[workspace]
+resolver = "3"
+members = []
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        )
+        .unwrap();
+
+        dir
+    }
+
+    fn print_workspace_files(workspace: &tempfile::TempDir, label: &str) {
+        println!("\n========== {label} ==========");
+
+        let root_manifest = workspace.path().join("Cargo.toml");
+
+        println!("\n--- Cargo.toml ---");
+        println!("{}", fs::read_to_string(root_manifest).unwrap());
+
+        if let Ok(entries) = fs::read_dir(workspace.path()) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+
+                if path.is_dir() {
+                    let manifest = path.join("Cargo.toml");
+
+                    if manifest.exists() {
+                        println!("\n--- {} ---", manifest.display());
+                        println!("{}", fs::read_to_string(manifest).unwrap());
+
+                        let src = path.join("src");
+
+                        if let Ok(source_entries) = fs::read_dir(src) {
+                            for source_entry in source_entries.flatten() {
+                                let source_path = source_entry.path();
+
+                                if source_path.is_file() {
+                                    println!("\n--- {} ---", source_path.display());
+                                    println!("{}", fs::read_to_string(source_path).unwrap());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("\n========== END {label} ==========\n");
+    }
+
+    fn run_create(workspace: &tempfile::TempDir, args: &[&str]) -> CargoResult<()> {
+        let current_dir = std::env::current_dir()?;
+        std::env::set_current_dir(workspace.path())?;
+
+        let result = {
+            let matches = cli_create()
+                .try_get_matches_from(std::iter::once("create").chain(args.iter().copied()))
+                .unwrap();
+
+            exec_create(&matches)
+        };
+
+        std::env::set_current_dir(current_dir)?;
+
+        result
+    }
+
+    #[test]
+    fn create_binary_package() {
+        let workspace = setup_workspace();
+
+        print_workspace_files(&workspace, "BEFORE");
+
+        run_create(&workspace, &["app"]).unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
+
+        let manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("[package]"));
+        assert!(manifest.contains("name = \"app\""));
+        assert!(manifest.contains("version = { workspace = true }"));
+        assert!(manifest.contains("edition = { workspace = true }"));
+
+        assert!(workspace.path().join("app/src/main.rs").exists());
+        assert!(!workspace.path().join("app/src/lib.rs").exists());
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("members = [\"app\"]"));
+    }
+
+    #[test]
+    fn create_library_package() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["lib", "--lib"]).unwrap();
+
+        assert!(workspace.path().join("lib/src/lib.rs").exists());
+        assert!(!workspace.path().join("lib/src/main.rs").exists());
+
+        let manifest = fs::read_to_string(workspace.path().join("lib/Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("[package]"));
+        assert!(manifest.contains("name = \"lib\""));
+        assert!(manifest.contains("version = { workspace = true }"));
+        assert!(manifest.contains("edition = { workspace = true }"));
+    }
+
+    #[test]
+    fn create_package_with_name() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["package-dir", "--name", "my-package"]).unwrap();
+
+        let manifest = fs::read_to_string(workspace.path().join("package-dir/Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("name = \"my-package\""));
+    }
+
+    #[test]
+    fn create_package_with_non_inherit() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["app", "--non-inherit", "--edition", "2021"]).unwrap();
+
+        let manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("name = \"app\""));
+        assert!(manifest.contains("version = \"0.1.0\""));
+        assert!(manifest.contains("edition = \"2021\""));
+
+        assert!(!manifest.contains("version = { workspace = true }"));
+        assert!(!manifest.contains("edition = { workspace = true }"));
+    }
+
+    #[test]
+    fn create_package_with_registry_and_non_inherit() {
+        let workspace = setup_workspace();
+
+        run_create(
+            &workspace,
+            &["app", "--non-inherit", "--registry", "my-registry"],
+        )
+        .unwrap();
+
+        let manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("publish = [\"my-registry\"]"));
+    }
+
+    #[test]
+    fn create_package_with_dep() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["app", "--dep"]).unwrap();
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("[workspace.dependencies]"));
+        assert!(root_manifest.contains("app = { path = \"app\" }"));
+    }
+
+    #[test]
+    fn create_package_updates_workspace_members() {
+        let workspace = setup_workspace();
+
+        print_workspace_files(&workspace, "BEFORE");
+
+        run_create(&workspace, &["app"]).unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("members = [\"app\"]"));
+    }
+
+    #[test]
+    fn create_package_rejects_existing_path() {
+        let workspace = setup_workspace();
+
+        fs::create_dir_all(workspace.path().join("app")).unwrap();
+
+        let result = run_create(&workspace, &["app"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_package_rejects_edition_without_non_inherit() {
+        let workspace = setup_workspace();
+
+        let result = run_create(&workspace, &["app", "--edition", "2021"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_package_rejects_registry_without_non_inherit() {
+        let workspace = setup_workspace();
+
+        let result = run_create(&workspace, &["app", "--registry", "my-registry"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_package_dep_uses_relative_member_path() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["packages/app", "--dep"]).unwrap();
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("app = { path = \"packages/app\" }"));
+    }
+
+    #[test]
+    fn create_package_with_default_bin() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["app"]).unwrap();
+
+        let source = fs::read_to_string(workspace.path().join("app/src/main.rs")).unwrap();
+
+        assert_eq!(source, "fn main() {\n    println!(\"Hello, world!\");\n}\n");
+    }
+
+    #[test]
+    fn create_package_with_lib_source() {
+        let workspace = setup_workspace();
+
+        run_create(&workspace, &["app", "--lib"]).unwrap();
+
+        let source = fs::read_to_string(workspace.path().join("app/src/lib.rs")).unwrap();
+
+        assert!(source.contains("pub fn add"));
+        assert!(source.contains("fn it_works()"));
+    }
+
+    #[test]
+    fn cli_rejects_bin_and_lib() {
+        let result = cli_create().try_get_matches_from(["create", "app", "--bin", "--lib"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn cli_accepts_non_inherit_edition() {
+        let result = cli_create().try_get_matches_from([
+            "create",
+            "app",
+            "--non-inherit",
+            "--edition",
+            "2021",
+        ]);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn new_package_kind_display() {
+        assert_eq!(NewPackageKind::Bin.to_string(), "binary (application)");
+        assert_eq!(NewPackageKind::Lib.to_string(), "library");
+    }
+
+    #[test]
+    fn new_package_kind_is_bin() {
+        assert!(NewPackageKind::Bin.is_bin());
+        assert!(!NewPackageKind::Lib.is_bin());
+    }
 }

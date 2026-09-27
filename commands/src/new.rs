@@ -63,7 +63,6 @@ impl NewCmd {
         ctx.add_modifier(
             Modifier::add_items_at(
                 TablePath::new().push("workspace"),
-                None,
                 space_item,
                 InheritMode::None,
             ),
@@ -87,7 +86,6 @@ impl NewCmd {
             ctx.add_modifier(
                 Modifier::add_items_at(
                     TablePath::new().push("package"),
-                    None,
                     pkg_items,
                     InheritMode::Full,
                 ),

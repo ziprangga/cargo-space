@@ -120,21 +120,25 @@ impl Manifest {
         key: &str,
         value: &Item,
     ) -> CargoResult<()> {
-        let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
-
-        let item = table
-            .get_mut(key)
-            .ok_or_else(|| error!("`{key}` could not be found"))?;
-
-        let array = item
-            .as_array_mut()
-            .ok_or_else(|| error!("`{key}` is not an array"))?;
+        let table = self
+            .toml_manifest
+            .get_or_create_table_like_mut(table.as_slice())?;
 
         let value = value
             .as_value()
             .ok_or_else(|| error!("Value is not a value"))?;
 
-        array.push(value.clone());
+        if let Some(item) = table.get_mut(key) {
+            let array = item
+                .as_array_mut()
+                .ok_or_else(|| error!("`{key}` is not an array"))?;
+
+            array.push(value.clone());
+        } else {
+            let mut array = Array::new();
+            array.push(value.clone());
+            table[key] = array.into();
+        }
 
         Ok(())
     }
@@ -347,30 +351,18 @@ impl Manifest {
     }
 
     // ===============================================
-    pub fn get_items_at(&self, table: &TablePath, key: Option<&str>) -> CargoResult<&Item> {
+    pub fn get_items_at(&self, table: &TablePath) -> CargoResult<&Item> {
         let item = self
             .toml_manifest
             .get_table_like(table.as_slice())
             .with_context(|| format!("Item of `{}` could not be found", table))?;
 
-        match key {
-            Some(key) => {
-                let item = item
-                    .get(key)
-                    .with_context(|| format!("Item of `{key}` could not be found"))?;
-
-                item.as_table_like()
-                    .map(|_| item)
-                    .ok_or_else(|| error!("Item of `{key}` is not a table-like type"))
-            }
-            None => Ok(item),
-        }
+        Ok(item)
     }
 
     pub fn add_items_at(
         &mut self,
         table: &TablePath,
-        key: Option<&str>,
         value: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
@@ -378,28 +370,13 @@ impl Manifest {
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
 
-        let source_item = if let Some(k) = key {
-            if base_table.is_inline_table() {
-                value.clone()
-            } else {
-                inherit_mode.resolve_key(k.to_string(), value.clone())?
-            }
-        } else {
-            inherit_mode.resolve_items(value.clone())?
-        };
+        let source_item = inherit_mode.resolve_items(value.clone())?;
 
         let table_like_source = source_item
             .as_table_like()
             .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
 
-        let target_item = match key {
-            Some(key) => base_table
-                .get_mut(key)
-                .ok_or_else(|| error!("`{key}` could not be found"))?,
-            None => base_table,
-        };
-
-        if let Some(old_value) = target_item.as_value_mut() {
+        if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 // Handle Inline Table: Merge inside the curly braces `{ ... }`
                 for (key, value) in table_like_source.iter() {
@@ -410,7 +387,7 @@ impl Manifest {
                     }
                 }
             }
-        } else if let Some(target_table) = target_item.as_table_mut() {
+        } else if let Some(target_table) = base_table.as_table_mut() {
             // Handle Standard Table: Merge fields cleanly
             for (key, value) in table_like_source.iter() {
                 if target_table.get(key).is_none() {
@@ -427,34 +404,18 @@ impl Manifest {
     pub fn update_items_at(
         &mut self,
         table: &TablePath,
-        key: Option<&str>,
         value: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        let source_item = if let Some(k) = key {
-            if base_table.is_inline_table() {
-                value.clone()
-            } else {
-                inherit_mode.resolve_key(k.to_string(), value.clone())?
-            }
-        } else {
-            inherit_mode.resolve_items(value.clone())?
-        };
+        let source_item = inherit_mode.resolve_items(value.clone())?;
 
         let table_like_source = source_item
             .as_table_like()
             .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
 
-        let target_item = match key {
-            Some(key) => base_table
-                .get_mut(key)
-                .ok_or_else(|| error!("`{key}` could not be found"))?,
-            None => base_table,
-        };
-
-        if let Some(old_value) = target_item.as_value_mut() {
+        if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 for (key, value) in table_like_source.iter() {
                     if let Some(new_value) = value.as_value() {
@@ -462,7 +423,7 @@ impl Manifest {
                     }
                 }
             }
-        } else if let Some(target_table) = target_item.as_table_mut() {
+        } else if let Some(target_table) = base_table.as_table_mut() {
             for (key, value) in table_like_source.iter() {
                 target_table.insert(key, value.clone());
             }
@@ -476,19 +437,11 @@ impl Manifest {
     pub fn remove_items_at(
         &mut self,
         table: &TablePath,
-        key: Option<&str>,
         targets: Option<&[String]>,
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        let target_item = match key {
-            Some(key) => base_table
-                .get_mut(key)
-                .ok_or_else(|| error!("`{key}` could not be found"))?,
-            None => base_table,
-        };
-
-        if let Some(old_value) = target_item.as_value_mut() {
+        if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 match targets {
                     Some(targets) => {
@@ -501,7 +454,7 @@ impl Manifest {
                     }
                 }
             }
-        } else if let Some(target_table) = target_item.as_table_mut() {
+        } else if let Some(target_table) = base_table.as_table_mut() {
             match targets {
                 Some(targets) => {
                     for key in targets {
