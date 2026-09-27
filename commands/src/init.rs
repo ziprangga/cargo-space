@@ -71,6 +71,9 @@ impl InitCmd {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("package");
             let pkg_items = space_manifest.get_items_at(&table_path)?.clone();
+            let pkg_dependencies = space_manifest
+                .get_items_at(&TablePath::new().push("dependencies"))?
+                .clone();
             let pkg_name = ctx
                 .get_space()
                 .get_root_pkg_id()
@@ -100,6 +103,15 @@ impl InitCmd {
             )?;
 
             ctx.add_modifier(
+                Modifier::add_items_at(
+                    TablePath::new().push("workspace").push("dependencies"),
+                    pkg_dependencies.clone(),
+                    InheritMode::None,
+                ),
+                Target::space(),
+            )?;
+
+            ctx.add_modifier(
                 Modifier::update_items_at(
                     TablePath::new().push("package"),
                     package_items.to_toml(),
@@ -114,6 +126,15 @@ impl InitCmd {
                     "name",
                     pkg_name.into(),
                     InheritMode::None,
+                ),
+                Target::space(),
+            )?;
+
+            ctx.add_modifier(
+                Modifier::update_items_at(
+                    TablePath::new().push("dependencies"),
+                    pkg_dependencies,
+                    InheritMode::Full,
                 ),
                 Target::space(),
             )?;
@@ -334,6 +355,9 @@ mod tests {
     name = "test-pkg"
     version = "0.1.0"
     edition = "2021"
+
+    [dependencies]
+    semver = { version = "1.0", features = ["serde"] }
     "#,
         )
         .unwrap();
@@ -364,7 +388,10 @@ mod tests {
         assert!(manifest.contains("[workspace]"));
         assert!(manifest.contains("resolver = \"3\""));
         assert!(manifest.contains("[workspace.package]"));
+        assert!(manifest.contains("[workspace.dependencies]"));
         assert!(manifest.contains("[package]"));
+        assert!(manifest.contains("[dependencies]"));
+        assert!(manifest.contains("semver.workspace = true"));
         assert!(manifest.contains("name = \"test-pkg\""));
     }
 }
