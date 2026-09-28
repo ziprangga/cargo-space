@@ -1,5 +1,7 @@
 use crate::manifest::Item;
 use crate::manifest::Table;
+use crate::manifest::Value;
+use crate::manifest::into_inline_table_item;
 
 use crate::errors::{CargoResult, error};
 
@@ -30,17 +32,21 @@ impl InheritMode {
             Self::Partial => {
                 let mut item = item;
 
-                if item.is_table_like() {
-                    if let Some(table) = item.as_table_like_mut() {
-                        table.insert("workspace", true.into());
-                    }
+                if let Some(table) = item.as_table_like_mut() {
+                    table.insert("workspace", true.into());
                 } else {
-                    return Err(error!(
-                        "can not make `{key}` inherit partially, item not table like"
-                    ));
-                }
+                    let mut inner_table = Table::new();
+                    inner_table.insert("workspace", true.into());
+                    let new_item = into_inline_table_item(Item::Table(inner_table))?;
 
-                Ok(item)
+                    item = new_item
+                };
+
+                let mut table = Table::new();
+                table.insert(&key, item);
+                let new_item_table = Item::Table(table);
+
+                Ok(new_item_table)
             }
 
             Self::None => Ok(item),
@@ -75,7 +81,30 @@ impl InheritMode {
                     return Err(error!("can not make it inherit, item not table like"));
                 };
 
-                table_like.insert("workspace", true.into());
+                let entries: Vec<(String, Item)> = table_like
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.clone()))
+                    .collect();
+
+                for (key, value) in entries {
+                    let item = if let Some(table_in) = value.as_table() {
+                        let mut new_table = table_in.clone();
+                        new_table.insert("workspace", true.into());
+
+                        Item::Table(new_table)
+                    } else if let Some(table_in) = value.as_inline_table() {
+                        let mut inline_table = table_in.clone();
+                        inline_table.insert("workspace", true.into());
+
+                        Item::Value(Value::InlineTable(inline_table))
+                    } else {
+                        let mut inner_table = Table::new();
+                        inner_table.insert("workspace", true.into());
+                        into_inline_table_item(Item::Table(inner_table))?
+                    };
+
+                    table_like.insert(&key, item);
+                }
 
                 Ok(item)
             }

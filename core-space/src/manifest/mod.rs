@@ -165,18 +165,16 @@ impl Manifest {
             .ok_or_else(|| error!("`{key}` value is not a value"))?;
 
         if let Some(old_value) = old_value.and_then(Item::as_value) {
-            if let Some(old_str) = old_value.as_str() {
-                if let Some(existing) = target_array
-                    .iter_mut()
-                    .find(|item| item.as_str() == Some(old_str))
-                {
-                    *existing = source_value.clone();
-                    return Ok(());
-                }
-            }
-        }
+            let index = target_array
+                .iter()
+                .position(|item| item.as_str() == old_value.as_str());
 
-        target_array.push(source_value.clone());
+            if let Some(idx) = index {
+                target_array.replace(idx, source_value.clone());
+            }
+        } else {
+            target_array.push(source_value.clone());
+        }
 
         Ok(())
     }
@@ -226,13 +224,31 @@ impl Manifest {
         value: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
-        let table = self
+        let base_table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
 
+        if base_table.get(key).is_some() {
+            return Ok(());
+        }
+
         let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
 
-        table[key] = source_item;
+        if inherit_mode.is_full() {
+            let source_table = source_item
+                .as_table()
+                .ok_or_else(|| error!("Resolved item is not table-like"))?;
+
+            let target_table = base_table
+                .as_table_mut()
+                .ok_or_else(|| error!("Target item is not table-like"))?;
+
+            for (key, value) in source_table.iter() {
+                target_table.insert(key, value.clone());
+            }
+        } else {
+            base_table[key] = source_item;
+        }
 
         Ok(())
     }
@@ -246,95 +262,51 @@ impl Manifest {
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        let source_item = if base_table.is_inline_table() {
-            value.clone()
-        } else {
-            inherit_mode.resolve_key(key.to_string(), value.clone())?
-        };
+        let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
 
         let target_item = base_table
             .get_mut(key)
             .ok_or_else(|| error!("`{key}` could not be found"))?;
 
-        if let Some(old_table) = target_item.as_table_mut() {
-            if let Some(new_table) = source_item.as_table() {
-                // Keep the old layout decoration (headers, bracket formatting, spacing, comments)
-                let old_decor = old_table.decor().clone();
+        let decor = if let Some(table) = target_item.as_table() {
+            table.decor().clone()
+        } else if let Some(value) = target_item.as_value() {
+            value.decor().clone()
+        } else {
+            Default::default()
+        };
 
-                // Keep its original file position index so it doesn't shift to the bottom
-                let old_position = old_table.position();
+        if !inherit_mode.is_none() {
+            let source_table = source_item
+                .as_table()
+                .ok_or_else(|| error!("Resolved item is not table-like"))?;
 
-                // Overwrite the table content
-                *old_table = new_table.clone();
+            let resolved_item = source_table
+                .get(key)
+                .ok_or_else(|| error!("Resolved key `{key}` could not be found"))?
+                .clone();
 
-                // Re-apply the formatting layout anchors
-                *old_table.decor_mut() = old_decor;
-                old_table.set_position(old_position);
+            *target_item = resolved_item;
+        } else {
+            *target_item = source_item;
+        }
+
+        if let Some(table_mut) = target_item.as_table_mut() {
+            if inherit_mode.is_full() {
+                let workspace_val = table_mut
+                    .get_mut("workspace")
+                    .ok_or_else(|| error!("`workspace` key could not be found"))?
+                    .as_value_mut()
+                    .ok_or_else(|| error!("`workspace` key is not a value type"))?;
+
+                *workspace_val.decor_mut() = decor;
+            } else {
+                *table_mut.decor_mut() = decor;
             }
-        } else if let Some(old_value) = target_item.as_value_mut() {
-            match old_value {
-                Value::Array(old_array) => {
-                    if let Some(new_array) = source_item.as_value().and_then(Value::as_array) {
-                        let old_decor = old_array.decor().clone();
-
-                        old_array.clear();
-                        old_array.extend(new_array.iter().cloned());
-
-                        *old_array.decor_mut() = old_decor;
-                    }
-                }
-                Value::InlineTable(old_inline_table) => {
-                    if let Some(mut new_value) = source_item.as_value().cloned() {
-                        let old_decor = old_inline_table.decor().clone();
-                        *new_value.decor_mut() = old_decor;
-                        *old_value = new_value;
-                    }
-                }
-                Value::String(val_string) => {
-                    if source_item.as_value().and_then(|v| v.as_str()) != Some(val_string.value()) {
-                        if let Some(mut new_value) = source_item.as_value().cloned() {
-                            *new_value.decor_mut() = val_string.decor().clone();
-                            *old_value = new_value;
-                        }
-                    }
-                }
-                Value::Integer(val_int) => {
-                    if source_item.as_value().and_then(|v| v.as_integer()) != Some(*val_int.value())
-                    {
-                        if let Some(mut new_value) = source_item.as_value().cloned() {
-                            *new_value.decor_mut() = val_int.decor().clone();
-                            *old_value = new_value;
-                        }
-                    }
-                }
-                Value::Float(val_float) => {
-                    if source_item.as_value().and_then(|v| v.as_float()) != Some(*val_float.value())
-                    {
-                        if let Some(mut new_value) = source_item.as_value().cloned() {
-                            *new_value.decor_mut() = val_float.decor().clone();
-                            *old_value = new_value;
-                        }
-                    }
-                }
-                Value::Boolean(val_bool) => {
-                    if source_item.as_value().and_then(|v| v.as_bool()) != Some(*val_bool.value()) {
-                        if let Some(mut new_value) = source_item.as_value().cloned() {
-                            *new_value.decor_mut() = val_bool.decor().clone();
-                            *old_value = new_value;
-                        }
-                    }
-                }
-                Value::Datetime(val_datetime) => {
-                    if source_item.as_value().and_then(|v| v.as_datetime())
-                        != Some(val_datetime.value())
-                    {
-                        if let Some(mut new_value) = source_item.as_value().cloned() {
-                            *new_value.decor_mut() = val_datetime.decor().clone();
-                            *old_value = new_value;
-                        }
-                    }
-                }
-            }
+        } else if let Some(value_mut) = target_item.as_value_mut() {
+            *value_mut.decor_mut() = decor;
+        } else {
+            Default::default()
         }
 
         Ok(())
@@ -415,17 +387,64 @@ impl Manifest {
             .as_table_like()
             .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
 
+        // let decor = if let Some(table) = base_table.as_table() {
+        //     table.decor().clone()
+        // } else if let Some(value) = base_table.as_inline_table() {
+        //     value.decor().clone()
+        // } else {
+        //     Default::default()
+        // };
+
         if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 for (key, value) in table_like_source.iter() {
                     if let Some(new_value) = value.as_value() {
-                        inline_table.insert(key, new_value.clone());
+                        // inline_table.insert(key, new_value.clone());
+                        if let Some(old_value) = inline_table.get(key) {
+                            let decor = old_value.decor().clone();
+                            let mut new_value = new_value.clone();
+                            *new_value.decor_mut() = decor;
+                            inline_table.insert(key, new_value);
+                        } else {
+                            inline_table.insert(key, new_value.clone());
+                        }
                     }
                 }
             }
         } else if let Some(target_table) = base_table.as_table_mut() {
             for (key, value) in table_like_source.iter() {
-                target_table.insert(key, value.clone());
+                // target_table.insert(key, value.clone());
+                if let Some(old_value) = target_table.get(key) {
+                    let decor = match old_value {
+                        Item::Value(value) => value.decor().clone(),
+                        Item::Table(table) => table.decor().clone(),
+                        _ => Default::default(),
+                    };
+
+                    let mut new_value = value.clone();
+
+                    match &mut new_value {
+                        Item::Value(value) => *value.decor_mut() = decor,
+                        Item::Table(table) => {
+                            if inherit_mode.is_full() {
+                                let workspace_val = table
+                                    .get_mut("workspace")
+                                    .ok_or_else(|| error!("`workspace` key could not be found"))?
+                                    .as_value_mut()
+                                    .ok_or_else(|| error!("`workspace` key is not a value type"))?;
+
+                                *workspace_val.decor_mut() = decor;
+                            } else {
+                                *table.decor_mut() = decor
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    target_table.insert(key, new_value);
+                } else {
+                    target_table.insert(key, value.clone());
+                }
             }
         } else {
             return Err(error!("Item is not a table"));
@@ -470,5 +489,548 @@ impl Manifest {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    fn create_manifest() -> (Manifest, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("Cargo.toml");
+
+        fs::write(
+            &path,
+            r#"[workspace]
+members = [
+"app", #this decorate 1
+"lib",
+"other" #this decorate test
+] #this decorate 2
+
+[workspace.dependencies]
+anyhow = "1.0" #this is decorate test2
+semver = { version = "1.0", features = ["serde"] }
+clap = { version = "4.6", features = ["derive", "wrap_help"] }
+
+[dependencies]
+toml_edit = "0.25" #this is decorate test3
+anyhow.workspace = true #this is decorate 3
+"#,
+        )
+        .unwrap();
+
+        let manifest = Manifest::from_toml_path(&path).unwrap();
+
+        (manifest, dir)
+    }
+
+    fn workspace() -> TablePath {
+        TablePath::new().push("workspace")
+    }
+
+    fn workspace_dependencies() -> TablePath {
+        TablePath::new().push("workspace").push("dependencies")
+    }
+
+    #[test]
+    fn get_array() {
+        let (manifest, _dir) = create_manifest();
+
+        println!("manifest:\n{}", manifest.data());
+
+        let table = workspace();
+        let array = manifest.get_array(&table, "members").unwrap();
+
+        println!("Getter:\n{}", array);
+
+        assert_eq!(array.len(), 2);
+        assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
+        assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
+    }
+
+    #[test]
+    fn add_value_to_array() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace();
+        let value = Item::Value(Value::from("other"));
+
+        manifest
+            .add_value_to_array(&table, "members", &value)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let array = manifest.get_array(&table, "members").unwrap();
+
+        assert_eq!(array.len(), 3);
+        assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
+        assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
+        assert_eq!(array.get(2).and_then(Value::as_str), Some("other"));
+    }
+
+    #[test]
+    fn update_value_of_array() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace();
+        let old_value = Item::Value(Value::from("other"));
+        let new_value = Item::Value(Value::from("test"));
+
+        manifest
+            .update_value_of_array(&table, "members", Some(&old_value), &new_value)
+            .unwrap();
+
+        // manifest
+        //     .update_value_of_array(&table, "members", None, &new_value)
+        //     .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let array = manifest.get_array(&table, "members").unwrap();
+
+        assert_eq!(array.len(), 3);
+        // assert_eq!(array.get(0).and_then(Value::as_str), Some("other"));
+        // assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
+
+        // assert_eq!(array.len(), 4);
+
+        let output = manifest.data().to_string();
+
+        // assert!(output.contains("\"other\", #this decorate 1"));
+        assert!(output.contains("] #this decorate 2"));
+    }
+
+    #[test]
+    fn remove_value_from_array() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace();
+        let value = Item::Value(Value::from("app"));
+
+        manifest
+            .remove_value_from_array(&table, "members", &value)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let array = manifest.get_array(&table, "members").unwrap();
+
+        assert_eq!(array.len(), 2);
+        // assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
+    }
+
+    #[test]
+    fn get_key() {
+        let (manifest, _dir) = create_manifest();
+
+        println!("MANIFEST:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+        let item = manifest.get_key(&table, "anyhow").unwrap();
+
+        println!("GET:\n{}", item);
+
+        assert_eq!(item.as_value().and_then(Value::as_str), Some("1.0"));
+    }
+
+    #[test]
+    fn add_key_non_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+        let value = Item::Value(Value::from("2.0"));
+
+        manifest
+            .add_key(&table, "anyhow", &value, &InheritMode::None)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_key(&table, "anyhow").unwrap();
+
+        assert_eq!(item.as_value().and_then(Value::as_str), Some("1.0"));
+    }
+
+    #[test]
+    fn add_key_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = TablePath::new().push("dependencies");
+
+        let mut source_table = Table::new();
+        source_table.insert("version", Value::from("1.0").into());
+
+        // let value = into_inline_table_item(Item::Table(source_table)).unwrap();
+        let value = Item::Table(source_table);
+
+        // manifest
+        //     .add_key(&table, "serde", &value, &InheritMode::Partial)
+        //     .unwrap();
+
+        manifest
+            .add_key(&table, "serde", &value, &InheritMode::Full)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_key(&table, "serde").unwrap();
+
+        let table = item.as_table_like().unwrap();
+
+        assert_eq!(
+            table
+                .get("workspace")
+                .and_then(Item::as_value)
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn update_key_non_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+        let value = Item::Value(Value::from("2.0"));
+
+        manifest
+            .update_key(&table, "anyhow", &value, &InheritMode::None)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_key(&table, "anyhow").unwrap();
+
+        assert_eq!(item.as_value().and_then(Value::as_str), Some("2.0"));
+    }
+
+    #[test]
+    fn update_key_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = TablePath::new().push("dependencies");
+
+        let mut source_table = Table::new();
+        source_table.insert("optional", true.into());
+
+        // let value = into_inline_table_item(Item::Table(source_table)).unwrap();
+        let value = Item::Table(source_table);
+
+        // let value = "2.0".into();
+
+        println!("FROM VALUE SOURCE:\n{}\n", value);
+
+        manifest
+            .update_key(&table, "toml_edit", &value, &InheritMode::Partial)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_key(&table, "toml_edit").unwrap();
+
+        let table = item.as_table_like().unwrap();
+
+        assert_eq!(
+            table
+                .get("workspace")
+                .and_then(Item::as_value)
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn remove_key() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        manifest.remove_key(&table, "semver").unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        assert!(manifest.get_key(&table, "semver").is_err());
+    }
+
+    #[test]
+    fn get_items_at() {
+        let (manifest, _dir) = create_manifest();
+
+        println!("MANIFEST:\n{}", manifest.data());
+
+        let table_path = workspace_dependencies();
+        let item = manifest.get_items_at(&table_path).unwrap();
+
+        println!("GET:\n{}", item);
+
+        let table = item.as_table_like().unwrap();
+
+        assert_eq!(
+            table
+                .get("anyhow")
+                .and_then(Item::as_value)
+                .and_then(Value::as_str),
+            Some("1.0")
+        );
+    }
+
+    #[test]
+    fn add_items_at_non_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        let value = Item::Table({
+            let mut table = Table::new();
+            table.insert("serde", "1.0".into());
+            table.insert("anyhow", "2.0".into());
+            table
+        });
+
+        manifest
+            .add_items_at(&table, &value, &InheritMode::None)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_items_at(&table).unwrap();
+        let table = item.as_table_like().unwrap();
+
+        assert_eq!(
+            table
+                .get("anyhow")
+                .and_then(Item::as_value)
+                .and_then(Value::as_str),
+            Some("1.0")
+        );
+
+        assert_eq!(
+            table
+                .get("serde")
+                .and_then(Item::as_value)
+                .and_then(Value::as_str),
+            Some("1.0")
+        );
+    }
+
+    #[test]
+    fn add_items_at_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        let value = Item::Table({
+            let mut table = Table::new();
+            table.insert("serde", "1.0".into());
+            // table.insert(
+            //     "serde",
+            //     Item::Value(Value::InlineTable({
+            //         let mut inline_table = InlineTable::new();
+            //         inline_table.insert("version", "1.0".into());
+            //         inline_table.insert("optional", true.into());
+            //         inline_table
+            //     })),
+            // );
+            // table.insert(
+            //     "serde",
+            //     Item::Table({
+            //         let mut table = Table::new();
+            //         table.insert("version", "1.0".into());
+            //         table.insert("optional", true.into());
+            //         table
+            //     }),
+            // );
+            table.insert("anyhow", "2.0".into());
+            table
+        });
+
+        // println!("FROM VALUE SOURCE:\n{}\n", value);
+        println!("======================\n======================\n");
+
+        manifest
+            .add_items_at(&table, &value, &InheritMode::Partial)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_items_at(&table).unwrap();
+        let table = item.as_table_like().unwrap();
+
+        let serde = table.get("serde").unwrap().as_table_like().unwrap();
+        assert_eq!(
+            serde
+                .get("workspace")
+                .and_then(Item::as_value)
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+
+        let anyhow = table.get("anyhow").unwrap().as_value();
+        assert_eq!(anyhow.and_then(Value::as_str), Some("1.0"));
+    }
+
+    #[test]
+    fn update_items_at_non_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        let value = Item::Table({
+            let mut table = Table::new();
+            table.insert("serde", "1.0".into());
+            table.insert("anyhow", "2.0".into());
+            table
+        });
+
+        manifest
+            .update_items_at(&table, &value, &InheritMode::None)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_items_at(&table).unwrap();
+        let table = item.as_table_like().unwrap();
+
+        assert_eq!(
+            table
+                .get("anyhow")
+                .and_then(Item::as_value)
+                .and_then(Value::as_str),
+            Some("2.0")
+        );
+
+        assert_eq!(
+            table
+                .get("serde")
+                .and_then(Item::as_value)
+                .and_then(Value::as_str),
+            Some("1.0")
+        );
+    }
+
+    #[test]
+    fn update_items_at_inherit() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        let value = Item::Table({
+            let mut table = Table::new();
+            // table.insert("serde", "1.0".into());
+            // table.insert("anyhow", "2.0".into());
+
+            // =================
+            // table.insert(
+            //     "serde",
+            //     Item::Value(Value::InlineTable({
+            //         let mut inline_table = InlineTable::new();
+            //         inline_table.insert("version", "1.0".into());
+            //         inline_table.insert("optional", true.into());
+            //         inline_table
+            //     })),
+            // );
+            // table.insert(
+            //     "anyhow",
+            //     Item::Value(Value::InlineTable({
+            //         let mut inline_table = InlineTable::new();
+            //         inline_table.insert("version", "2.0".into());
+            //         inline_table.insert("optional", true.into());
+            //         inline_table
+            //     })),
+            // );
+
+            // =================
+            table.insert(
+                "serde",
+                Item::Table({
+                    let mut table = Table::new();
+                    table.insert("version", "1.0".into());
+                    table.insert("optional", true.into());
+                    table
+                }),
+            );
+            table.insert(
+                "anyhow",
+                Item::Table({
+                    let mut table = Table::new();
+                    table.insert("version", "2.0".into());
+                    table.insert("optional", true.into());
+                    table
+                }),
+            );
+            table
+        });
+
+        // println!("FROM VALUE SOURCE:\n{}\n", value);
+        println!("======================\n======================\n");
+
+        manifest
+            .update_items_at(&table, &value, &InheritMode::Partial)
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        let item = manifest.get_items_at(&table).unwrap();
+        let table = item.as_table_like().unwrap();
+
+        let serde = table.get("serde").unwrap().as_table_like().unwrap();
+        assert_eq!(
+            serde
+                .get("workspace")
+                .and_then(Item::as_value)
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+
+        // let anyhow = table.get("anyhow").unwrap().as_value();
+        // assert_eq!(anyhow.and_then(Value::as_str), Some("2.0"));
+    }
+
+    #[test]
+    fn remove_items_at() {
+        let (mut manifest, _dir) = create_manifest();
+
+        println!("BEFORE:\n{}", manifest.data());
+
+        let table = workspace_dependencies();
+
+        // manifest.remove_items_at(&table, None).unwrap();
+
+        manifest
+            .remove_items_at(&table, Some(&["semver".into(), "anyhow".into()]))
+            .unwrap();
+
+        println!("AFTER:\n{}", manifest.data());
+
+        assert!(manifest.get_key(&table, "semver").is_err());
     }
 }
