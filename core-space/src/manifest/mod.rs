@@ -387,14 +387,6 @@ impl Manifest {
             .as_table_like()
             .ok_or_else(|| error!("Incoming value is not a table-like type"))?;
 
-        // let decor = if let Some(table) = base_table.as_table() {
-        //     table.decor().clone()
-        // } else if let Some(value) = base_table.as_inline_table() {
-        //     value.decor().clone()
-        // } else {
-        //     Default::default()
-        // };
-
         if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 for (key, value) in table_like_source.iter() {
