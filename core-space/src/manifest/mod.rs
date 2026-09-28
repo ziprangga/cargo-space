@@ -291,22 +291,22 @@ impl Manifest {
             *target_item = source_item;
         }
 
-        if let Some(table_mut) = target_item.as_table_mut() {
-            if inherit_mode.is_full() {
-                let workspace_val = table_mut
-                    .get_mut("workspace")
-                    .ok_or_else(|| error!("`workspace` key could not be found"))?
-                    .as_value_mut()
-                    .ok_or_else(|| error!("`workspace` key is not a value type"))?;
+        match target_item {
+            Item::Value(value) => *value.decor_mut() = decor,
+            Item::Table(table) => {
+                if inherit_mode.is_full() {
+                    let workspace_val = table
+                        .get_mut("workspace")
+                        .ok_or_else(|| error!("`workspace` key could not be found"))?
+                        .as_value_mut()
+                        .ok_or_else(|| error!("`workspace` key is not a value type"))?;
 
-                *workspace_val.decor_mut() = decor;
-            } else {
-                *table_mut.decor_mut() = decor;
+                    *workspace_val.decor_mut() = decor;
+                } else {
+                    *table.decor_mut() = decor
+                }
             }
-        } else if let Some(value_mut) = target_item.as_value_mut() {
-            *value_mut.decor_mut() = decor;
-        } else {
-            Default::default()
+            _ => {}
         }
 
         Ok(())
@@ -391,7 +391,6 @@ impl Manifest {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 for (key, value) in table_like_source.iter() {
                     if let Some(new_value) = value.as_value() {
-                        // inline_table.insert(key, new_value.clone());
                         if let Some(old_value) = inline_table.get(key) {
                             let decor = old_value.decor().clone();
                             let mut new_value = new_value.clone();
@@ -405,7 +404,6 @@ impl Manifest {
             }
         } else if let Some(target_table) = base_table.as_table_mut() {
             for (key, value) in table_like_source.iter() {
-                // target_table.insert(key, value.clone());
                 if let Some(old_value) = target_table.get(key) {
                     let decor = match old_value {
                         Item::Value(value) => value.decor().clone(),
