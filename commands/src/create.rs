@@ -304,7 +304,7 @@ mod tests {
             r#"
 [workspace]
 resolver = "3"
-members = []
+
 
 [workspace.package]
 version = "0.1.0"
@@ -386,8 +386,8 @@ edition = "2024"
 
         assert!(manifest.contains("[package]"));
         assert!(manifest.contains("name = \"app\""));
-        assert!(manifest.contains("version = { workspace = true }"));
-        assert!(manifest.contains("edition = { workspace = true }"));
+        assert!(manifest.contains("version.workspace = true"));
+        assert!(manifest.contains("edition.workspace = true"));
 
         assert!(workspace.path().join("app/src/main.rs").exists());
         assert!(!workspace.path().join("app/src/lib.rs").exists());

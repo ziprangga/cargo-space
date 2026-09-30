@@ -3,6 +3,9 @@ mod man_util;
 mod table_path;
 mod toml_manifest;
 
+#[cfg(test)]
+mod tests;
+
 use toml_manifest::TomlManifest;
 
 pub use inherit_mode::InheritMode;
@@ -113,6 +116,18 @@ impl Manifest {
             .and_then(Item::as_array)
             .ok_or_else(|| error!("`{key}` is not an array"))
     }
+    // pub fn get_array(&self, table: &TablePath, key: &str) -> Option<&Array> {
+    //     let item = match self.toml_manifest.get_table_like(table.as_slice()) {
+    //         Ok(item) => item,
+    //         Err(err) => {
+    //             // `err` is the original low-level error.
+    //             eprintln!("{err}");
+    //             return None;
+    //         }
+    //     };
+
+    //     item.get(key).and_then(Item::as_array)
+    // }
 
     pub fn add_value_to_array(
         &mut self,
@@ -120,7 +135,7 @@ impl Manifest {
         key: &str,
         value: &Item,
     ) -> CargoResult<()> {
-        let table = self
+        let base_table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
 
@@ -128,16 +143,32 @@ impl Manifest {
             .as_value()
             .ok_or_else(|| error!("Value is not a value"))?;
 
-        if let Some(item) = table.get_mut(key) {
-            let array = item
-                .as_array_mut()
+        let target_item_exist = base_table.get(key).is_some();
+
+        if target_item_exist {
+            let array = base_table
+                .get_mut(key)
+                .and_then(Item::as_array_mut)
                 .ok_or_else(|| error!("`{key}` is not an array"))?;
 
-            array.push(value.clone());
+            let trailing_comma = array.trailing_comma();
+
+            if trailing_comma {
+                let trailing = array.trailing().clone();
+
+                let mut new_value = value.clone();
+
+                new_value.decor_mut().set_prefix(trailing);
+                array.push_formatted(new_value);
+
+                array.set_trailing("\n");
+            } else {
+                array.push_formatted(value.clone());
+            }
         } else {
             let mut array = Array::new();
             array.push(value.clone());
-            table[key] = array.into();
+            base_table[key] = array.into();
         }
 
         Ok(())
@@ -164,6 +195,8 @@ impl Manifest {
             .as_value()
             .ok_or_else(|| error!("`{key}` value is not a value"))?;
 
+        let trailing_comma = target_array.trailing_comma();
+
         if let Some(old_value) = old_value.and_then(Item::as_value) {
             let index = target_array
                 .iter()
@@ -173,7 +206,18 @@ impl Manifest {
                 target_array.replace(idx, source_value.clone());
             }
         } else {
-            target_array.push(source_value.clone());
+            if trailing_comma {
+                let trailing = target_array.trailing().clone();
+
+                let mut new_value = source_value.clone();
+
+                new_value.decor_mut().set_prefix(trailing);
+                target_array.push_formatted(new_value);
+
+                target_array.set_trailing("\n");
+            } else {
+                target_array.push_formatted(source_value.clone());
+            }
         }
 
         Ok(())
@@ -191,19 +235,27 @@ impl Manifest {
             .get_mut(key)
             .ok_or_else(|| error!("`{key}` could not be found"))?;
 
-        let array = item
+        let target_array = item
             .as_array_mut()
             .ok_or_else(|| error!("`{key}` is not an array"))?;
 
-        let value = value
+        let target_value = value
             .as_value()
             .and_then(|value| value.as_str())
             .ok_or_else(|| error!("Value is not a string"))?;
 
-        let index = array.iter().position(|item| item.as_str() == Some(value));
+        let index = target_array
+            .iter()
+            .position(|item| item.as_str() == Some(target_value));
 
         if let Some(idx) = index {
-            array.remove(idx);
+            if let Some(v) = target_array.get_mut(idx + 1) {
+                if v.decor().prefix().is_some() {
+                    v.decor_mut().set_prefix("");
+                }
+            }
+
+            target_array.remove(idx);
         }
 
         Ok(())
@@ -479,548 +531,5 @@ impl Manifest {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use tempfile::tempdir;
-
-    fn create_manifest() -> (Manifest, tempfile::TempDir) {
-        let dir = tempdir().unwrap();
-        let path = dir.path().join("Cargo.toml");
-
-        fs::write(
-            &path,
-            r#"[workspace]
-members = [
-"app", #this decorate 1
-"lib",
-"other" #this decorate test
-] #this decorate 2
-
-[workspace.dependencies]
-anyhow = "1.0" #this is decorate test2
-semver = { version = "1.0", features = ["serde"] }
-clap = { version = "4.6", features = ["derive", "wrap_help"] }
-
-[dependencies]
-toml_edit = "0.25" #this is decorate test3
-anyhow.workspace = true #this is decorate 3
-"#,
-        )
-        .unwrap();
-
-        let manifest = Manifest::from_toml_path(&path).unwrap();
-
-        (manifest, dir)
-    }
-
-    fn workspace() -> TablePath {
-        TablePath::new().push("workspace")
-    }
-
-    fn workspace_dependencies() -> TablePath {
-        TablePath::new().push("workspace").push("dependencies")
-    }
-
-    #[test]
-    fn get_array() {
-        let (manifest, _dir) = create_manifest();
-
-        println!("manifest:\n{}", manifest.data());
-
-        let table = workspace();
-        let array = manifest.get_array(&table, "members").unwrap();
-
-        println!("Getter:\n{}", array);
-
-        assert_eq!(array.len(), 2);
-        assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
-        assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
-    }
-
-    #[test]
-    fn add_value_to_array() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace();
-        let value = Item::Value(Value::from("other"));
-
-        manifest
-            .add_value_to_array(&table, "members", &value)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let array = manifest.get_array(&table, "members").unwrap();
-
-        assert_eq!(array.len(), 3);
-        assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
-        assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
-        assert_eq!(array.get(2).and_then(Value::as_str), Some("other"));
-    }
-
-    #[test]
-    fn update_value_of_array() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace();
-        let old_value = Item::Value(Value::from("other"));
-        let new_value = Item::Value(Value::from("test"));
-
-        manifest
-            .update_value_of_array(&table, "members", Some(&old_value), &new_value)
-            .unwrap();
-
-        // manifest
-        //     .update_value_of_array(&table, "members", None, &new_value)
-        //     .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let array = manifest.get_array(&table, "members").unwrap();
-
-        assert_eq!(array.len(), 3);
-        // assert_eq!(array.get(0).and_then(Value::as_str), Some("other"));
-        // assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
-
-        // assert_eq!(array.len(), 4);
-
-        let output = manifest.data().to_string();
-
-        // assert!(output.contains("\"other\", #this decorate 1"));
-        assert!(output.contains("] #this decorate 2"));
-    }
-
-    #[test]
-    fn remove_value_from_array() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace();
-        let value = Item::Value(Value::from("app"));
-
-        manifest
-            .remove_value_from_array(&table, "members", &value)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let array = manifest.get_array(&table, "members").unwrap();
-
-        assert_eq!(array.len(), 2);
-        // assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
-    }
-
-    #[test]
-    fn get_key() {
-        let (manifest, _dir) = create_manifest();
-
-        println!("MANIFEST:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-        let item = manifest.get_key(&table, "anyhow").unwrap();
-
-        println!("GET:\n{}", item);
-
-        assert_eq!(item.as_value().and_then(Value::as_str), Some("1.0"));
-    }
-
-    #[test]
-    fn add_key_non_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-        let value = Item::Value(Value::from("2.0"));
-
-        manifest
-            .add_key(&table, "anyhow", &value, &InheritMode::None)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_key(&table, "anyhow").unwrap();
-
-        assert_eq!(item.as_value().and_then(Value::as_str), Some("1.0"));
-    }
-
-    #[test]
-    fn add_key_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = TablePath::new().push("dependencies");
-
-        let mut source_table = Table::new();
-        source_table.insert("version", Value::from("1.0").into());
-
-        // let value = into_inline_table_item(Item::Table(source_table)).unwrap();
-        let value = Item::Table(source_table);
-
-        // manifest
-        //     .add_key(&table, "serde", &value, &InheritMode::Partial)
-        //     .unwrap();
-
-        manifest
-            .add_key(&table, "serde", &value, &InheritMode::Full)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_key(&table, "serde").unwrap();
-
-        let table = item.as_table_like().unwrap();
-
-        assert_eq!(
-            table
-                .get("workspace")
-                .and_then(Item::as_value)
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn update_key_non_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-        let value = Item::Value(Value::from("2.0"));
-
-        manifest
-            .update_key(&table, "anyhow", &value, &InheritMode::None)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_key(&table, "anyhow").unwrap();
-
-        assert_eq!(item.as_value().and_then(Value::as_str), Some("2.0"));
-    }
-
-    #[test]
-    fn update_key_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = TablePath::new().push("dependencies");
-
-        let mut source_table = Table::new();
-        source_table.insert("optional", true.into());
-
-        // let value = into_inline_table_item(Item::Table(source_table)).unwrap();
-        let value = Item::Table(source_table);
-
-        // let value = "2.0".into();
-
-        println!("FROM VALUE SOURCE:\n{}\n", value);
-
-        manifest
-            .update_key(&table, "toml_edit", &value, &InheritMode::Partial)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_key(&table, "toml_edit").unwrap();
-
-        let table = item.as_table_like().unwrap();
-
-        assert_eq!(
-            table
-                .get("workspace")
-                .and_then(Item::as_value)
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-    }
-
-    #[test]
-    fn remove_key() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        manifest.remove_key(&table, "semver").unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        assert!(manifest.get_key(&table, "semver").is_err());
-    }
-
-    #[test]
-    fn get_items_at() {
-        let (manifest, _dir) = create_manifest();
-
-        println!("MANIFEST:\n{}", manifest.data());
-
-        let table_path = workspace_dependencies();
-        let item = manifest.get_items_at(&table_path).unwrap();
-
-        println!("GET:\n{}", item);
-
-        let table = item.as_table_like().unwrap();
-
-        assert_eq!(
-            table
-                .get("anyhow")
-                .and_then(Item::as_value)
-                .and_then(Value::as_str),
-            Some("1.0")
-        );
-    }
-
-    #[test]
-    fn add_items_at_non_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        let value = Item::Table({
-            let mut table = Table::new();
-            table.insert("serde", "1.0".into());
-            table.insert("anyhow", "2.0".into());
-            table
-        });
-
-        manifest
-            .add_items_at(&table, &value, &InheritMode::None)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_items_at(&table).unwrap();
-        let table = item.as_table_like().unwrap();
-
-        assert_eq!(
-            table
-                .get("anyhow")
-                .and_then(Item::as_value)
-                .and_then(Value::as_str),
-            Some("1.0")
-        );
-
-        assert_eq!(
-            table
-                .get("serde")
-                .and_then(Item::as_value)
-                .and_then(Value::as_str),
-            Some("1.0")
-        );
-    }
-
-    #[test]
-    fn add_items_at_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        let value = Item::Table({
-            let mut table = Table::new();
-            table.insert("serde", "1.0".into());
-            // table.insert(
-            //     "serde",
-            //     Item::Value(Value::InlineTable({
-            //         let mut inline_table = InlineTable::new();
-            //         inline_table.insert("version", "1.0".into());
-            //         inline_table.insert("optional", true.into());
-            //         inline_table
-            //     })),
-            // );
-            // table.insert(
-            //     "serde",
-            //     Item::Table({
-            //         let mut table = Table::new();
-            //         table.insert("version", "1.0".into());
-            //         table.insert("optional", true.into());
-            //         table
-            //     }),
-            // );
-            table.insert("anyhow", "2.0".into());
-            table
-        });
-
-        // println!("FROM VALUE SOURCE:\n{}\n", value);
-        println!("======================\n======================\n");
-
-        manifest
-            .add_items_at(&table, &value, &InheritMode::Partial)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_items_at(&table).unwrap();
-        let table = item.as_table_like().unwrap();
-
-        let serde = table.get("serde").unwrap().as_table_like().unwrap();
-        assert_eq!(
-            serde
-                .get("workspace")
-                .and_then(Item::as_value)
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-
-        let anyhow = table.get("anyhow").unwrap().as_value();
-        assert_eq!(anyhow.and_then(Value::as_str), Some("1.0"));
-    }
-
-    #[test]
-    fn update_items_at_non_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        let value = Item::Table({
-            let mut table = Table::new();
-            table.insert("serde", "1.0".into());
-            table.insert("anyhow", "2.0".into());
-            table
-        });
-
-        manifest
-            .update_items_at(&table, &value, &InheritMode::None)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_items_at(&table).unwrap();
-        let table = item.as_table_like().unwrap();
-
-        assert_eq!(
-            table
-                .get("anyhow")
-                .and_then(Item::as_value)
-                .and_then(Value::as_str),
-            Some("2.0")
-        );
-
-        assert_eq!(
-            table
-                .get("serde")
-                .and_then(Item::as_value)
-                .and_then(Value::as_str),
-            Some("1.0")
-        );
-    }
-
-    #[test]
-    fn update_items_at_inherit() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        let value = Item::Table({
-            let mut table = Table::new();
-            // table.insert("serde", "1.0".into());
-            // table.insert("anyhow", "2.0".into());
-
-            // =================
-            // table.insert(
-            //     "serde",
-            //     Item::Value(Value::InlineTable({
-            //         let mut inline_table = InlineTable::new();
-            //         inline_table.insert("version", "1.0".into());
-            //         inline_table.insert("optional", true.into());
-            //         inline_table
-            //     })),
-            // );
-            // table.insert(
-            //     "anyhow",
-            //     Item::Value(Value::InlineTable({
-            //         let mut inline_table = InlineTable::new();
-            //         inline_table.insert("version", "2.0".into());
-            //         inline_table.insert("optional", true.into());
-            //         inline_table
-            //     })),
-            // );
-
-            // =================
-            table.insert(
-                "serde",
-                Item::Table({
-                    let mut table = Table::new();
-                    table.insert("version", "1.0".into());
-                    table.insert("optional", true.into());
-                    table
-                }),
-            );
-            table.insert(
-                "anyhow",
-                Item::Table({
-                    let mut table = Table::new();
-                    table.insert("version", "2.0".into());
-                    table.insert("optional", true.into());
-                    table
-                }),
-            );
-            table
-        });
-
-        // println!("FROM VALUE SOURCE:\n{}\n", value);
-        println!("======================\n======================\n");
-
-        manifest
-            .update_items_at(&table, &value, &InheritMode::Partial)
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        let item = manifest.get_items_at(&table).unwrap();
-        let table = item.as_table_like().unwrap();
-
-        let serde = table.get("serde").unwrap().as_table_like().unwrap();
-        assert_eq!(
-            serde
-                .get("workspace")
-                .and_then(Item::as_value)
-                .and_then(Value::as_bool),
-            Some(true)
-        );
-
-        // let anyhow = table.get("anyhow").unwrap().as_value();
-        // assert_eq!(anyhow.and_then(Value::as_str), Some("2.0"));
-    }
-
-    #[test]
-    fn remove_items_at() {
-        let (mut manifest, _dir) = create_manifest();
-
-        println!("BEFORE:\n{}", manifest.data());
-
-        let table = workspace_dependencies();
-
-        // manifest.remove_items_at(&table, None).unwrap();
-
-        manifest
-            .remove_items_at(&table, Some(&["semver".into(), "anyhow".into()]))
-            .unwrap();
-
-        println!("AFTER:\n{}", manifest.data());
-
-        assert!(manifest.get_key(&table, "semver").is_err());
     }
 }

@@ -1,6 +1,7 @@
 mod metadata;
 mod modifier;
 mod target;
+mod writer;
 
 pub use metadata::DepId;
 pub use metadata::MANIFEST_FILENAME;
@@ -9,15 +10,12 @@ pub use metadata::Space;
 pub use modifier::Modifier;
 pub use target::Target;
 pub use target::TargetConfig;
+pub use writer::Writer;
 
 use crate::errors::CargoResult;
 use crate::errors::error;
 use crate::utility::IndexMap;
-use crate::utility::IndexSet;
 use crate::utility::index_map;
-use crate::utility::index_set;
-
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default)]
 pub struct Context {
@@ -149,128 +147,45 @@ impl Context {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Writer;
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+// pub struct Writer;
 
-impl Writer {
-    pub fn write(ctx: &Context) -> CargoResult<()> {
-        let mut paths: IndexSet<PathBuf> = index_set();
+// impl Writer {
+//     pub fn write(ctx: &Context) -> CargoResult<()> {
+//         let mut paths: IndexSet<PathBuf> = index_set();
 
-        for target_config in ctx.get_target_configs() {
-            let path = match target_config.get_target() {
-                Target::Space => ctx.get_space().get_root_manifest_path().to_path_buf(),
+//         for target_config in ctx.get_target_configs() {
+//             let path = match target_config.get_target() {
+//                 Target::Space => ctx.get_space().get_root_manifest_path().to_path_buf(),
 
-                Target::Pkg(pkg_name) => {
-                    ctx.get_pkg_id(pkg_name)?.get_manifest_path().to_path_buf()
-                }
+//                 Target::Pkg(pkg_name) => {
+//                     ctx.get_pkg_id(pkg_name)?.get_manifest_path().to_path_buf()
+//                 }
 
-                Target::None => continue,
-            };
+//                 Target::None => continue,
+//             };
 
-            paths.insert(path);
-        }
+//             paths.insert(path);
+//         }
 
-        for path in paths {
-            if path == ctx.get_space().get_root_manifest_path() {
-                let manifest = ctx.get_space().manifest_ref()?;
-                manifest.write()?;
-            } else {
-                if let Some(members) = ctx.get_space().get_members() {
-                    for pkg_id in members {
-                        if pkg_id.get_manifest_path() == path {
-                            let manifest = pkg_id.manifest_ref()?;
-                            manifest.write()?;
+//         for path in paths {
+//             if path == ctx.get_space().get_root_manifest_path() {
+//                 let manifest = ctx.get_space().manifest_ref()?;
+//                 manifest.write()?;
+//             } else {
+//                 if let Some(members) = ctx.get_space().get_members() {
+//                     for pkg_id in members {
+//                         if pkg_id.get_manifest_path() == path {
+//                             let manifest = pkg_id.manifest_ref()?;
+//                             manifest.write()?;
 
-                            break;
-                        }
-                    }
-                }
-            }
-        }
+//                             break;
+//                         }
+//                     }
+//                 }
+//             }
+//         }
 
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::manifest::Manifest;
-    use tempfile::tempdir;
-
-    #[test]
-    fn condition_loads_existing_space_manifest() {
-        let dir = tempdir().unwrap();
-        let manifest_path = dir.path().join(MANIFEST_FILENAME);
-
-        std::fs::write(
-            &manifest_path,
-            r#"
-[workspace]
-members = []
-"#,
-        )
-        .unwrap();
-
-        let manifest = Manifest::from_toml_path(&manifest_path).unwrap();
-
-        let space = Space::new()
-            .with_root_path(dir.path())
-            .with_root_manifest_path(&manifest_path)
-            .with_manifest(manifest);
-
-        let manifest = space.manifest_ref().unwrap();
-
-        assert_eq!(manifest.toml_path(), manifest_path);
-    }
-
-    #[test]
-    fn condition_loads_existing_pkg_manifest() {
-        let dir = tempdir().unwrap();
-        let pkg_path = dir.path().join("app");
-        std::fs::create_dir_all(&pkg_path).unwrap();
-
-        let manifest_path = pkg_path.join(MANIFEST_FILENAME);
-
-        std::fs::write(
-            &manifest_path,
-            r#"
-    [package]
-    name = "app"
-    version = "0.1.0"
-    edition = "2024"
-    "#,
-        )
-        .unwrap();
-
-        let manifest = Manifest::from_toml_path(&manifest_path).unwrap();
-
-        let pkg_id = PkgId::new()
-            .with_name("app")
-            .with_path(&pkg_path)
-            .with_manifest_path(&manifest_path)
-            .with_manifest(manifest);
-
-        let manifest = pkg_id.manifest_ref().unwrap();
-
-        assert_eq!(manifest.toml_path(), manifest_path);
-    }
-
-    #[test]
-    fn condition_creates_new_manifest_when_path_does_not_exist() {
-        let dir = tempdir().unwrap();
-        let manifest_path = dir.path().join(MANIFEST_FILENAME);
-
-        let manifest = Manifest::new(&manifest_path);
-
-        let space = Space::new()
-            .with_root_path(dir.path())
-            .with_root_manifest_path(&manifest_path)
-            .with_manifest(manifest);
-
-        let manifest = space.manifest_ref().unwrap();
-
-        assert_eq!(manifest.toml_path(), manifest_path);
-        assert!(!manifest_path.exists());
-    }
-}
+//         Ok(())
+//     }
+// }
