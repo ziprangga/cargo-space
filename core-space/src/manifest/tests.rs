@@ -26,6 +26,31 @@ fn dependencies() -> TablePath {
 }
 
 #[test]
+fn test_wrong_table() {
+    let toml_content = r#"[workspace]
+    members = ["app", "lib", "other"]
+
+    [dependencies]
+    test = "1.0"
+    "#;
+    let (mut manifest, _dir) = create_manifest(toml_content);
+
+    println!("manifest:\n{}", manifest.data());
+
+    let table = TablePath::new().push("dependencies").push("test");
+    let value = Item::Value(Value::from("2.0"));
+    let result = manifest.add_key(&table, "serde", &value, &InheritMode::None);
+
+    println!("======================\n======================\n");
+
+    println!("AFTER:\n{}", manifest.data());
+
+    println!("Result:\n{:?}", result);
+
+    assert!(result.is_err());
+}
+
+#[test]
 fn get_array() {
     let toml_content = r#"[workspace]
     members = [
