@@ -287,7 +287,36 @@ fn get_key() {
 }
 
 #[test]
-fn add_key_non_inherit() {
+fn add_key_non_inherit_added() {
+    let toml_content = r#"
+    [workspace.dependencies]
+    anyhow = "1.0" #this is decorate test2
+    semver = { version = "1.0", features = ["serde"] }
+    clap = { version = "4.6", features = ["derive", "wrap_help"] }
+    "#;
+
+    let (mut manifest, _dir) = create_manifest(toml_content);
+
+    println!("BEFORE:\n{}", manifest.data());
+
+    let table = workspace_dependencies();
+    let value = Item::Value(Value::from("2.0"));
+
+    manifest
+        .add_key(&table, "serde", &value, &InheritMode::None)
+        .unwrap();
+
+    println!("======================\n======================\n");
+
+    println!("AFTER:\n{}", manifest.data());
+
+    let item = manifest.get_key(&table, "serde").unwrap();
+
+    assert_eq!(item.as_value().and_then(Value::as_str), Some("2.0"));
+}
+
+#[test]
+fn add_key_non_inherit_not_replace_existed() {
     let toml_content = r#"
     [workspace.dependencies]
     anyhow = "1.0" #this is decorate test2
@@ -446,8 +475,6 @@ fn update_key_inherit_full() {
     let value = Item::Table(source_table);
     // let value = into_inline_table_item(Item::Table(source_table)).unwrap();
     // let value = "2.0".into();
-
-    println!("FROM VALUE SOURCE:\n{}\n", value);
 
     manifest
         .update_key(&table, "toml_edit", &value, &InheritMode::Full)
@@ -700,16 +727,16 @@ fn add_items_at_inherit_partial() {
 
     let value = Item::Table({
         let mut table = Table::new();
-        table.insert("serde", "1.0".into());
-        // table.insert(
-        //     "serde",
-        //     Item::Value(Value::InlineTable({
-        //         let mut inline_table = InlineTable::new();
-        //         inline_table.insert("version", "1.0".into());
-        //         inline_table.insert("optional", true.into());
-        //         inline_table
-        //     })),
-        // );
+        // table.insert("serde", "1.0".into());
+        table.insert(
+            "serde",
+            Item::Value(Value::InlineTable({
+                let mut inline_table = InlineTable::new();
+                inline_table.insert("version", "1.0".into());
+                inline_table.insert("optional", true.into());
+                inline_table
+            })),
+        );
         // table.insert(
         //     "serde",
         //     Item::Table({

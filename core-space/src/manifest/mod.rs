@@ -286,7 +286,7 @@ impl Manifest {
 
         let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
 
-        if inherit_mode.is_full() {
+        if !inherit_mode.is_none() {
             let source_table = source_item
                 .as_table()
                 .ok_or_else(|| error!("Resolved item is not table-like"))?;
