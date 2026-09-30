@@ -43,9 +43,16 @@ impl Manifest {
         }
     }
 
-    pub fn from_toml_path(path: &Path) -> CargoResult<Self> {
-        let toml_path = path.to_path_buf();
-        let toml_manifest = TomlManifest::from_manifest_path(&path)?;
+    pub fn from_toml_path(manifest_path: &Path) -> CargoResult<Self> {
+        let toml_path = manifest_path.to_path_buf();
+        let content = std::fs::read_to_string(manifest_path)
+            .with_context(|| format!("failed to read {}", manifest_path.display()))?;
+
+        let data = content
+            .parse::<DocMut>()
+            .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+
+        let toml_manifest = TomlManifest::new().with_data(data);
 
         Ok(Self {
             toml_path,
@@ -79,34 +86,34 @@ impl Manifest {
     }
 }
 
-impl Manifest {
-    pub fn is_table_exist(&self, table: &TablePath) -> bool {
-        self.toml_manifest.get_table_like(table.as_slice()).is_ok()
-    }
+// impl Manifest {
+//     pub fn is_table_exist(&self, table: &TablePath) -> bool {
+//         self.toml_manifest.get_table_like(table.as_slice()).is_ok()
+//     }
 
-    pub fn is_table_inline_table(&self, table: &TablePath) -> bool {
-        self.toml_manifest
-            .get_table_like(table.as_slice())
-            .ok()
-            .is_some_and(|table| table.is_inline_table())
-    }
+//     pub fn is_table_inline_table(&self, table: &TablePath) -> bool {
+//         self.toml_manifest
+//             .get_table_like(table.as_slice())
+//             .ok()
+//             .is_some_and(|table| table.is_inline_table())
+//     }
 
-    pub fn is_key_exist(&self, table: &TablePath, key: &str) -> bool {
-        self.toml_manifest
-            .get_table_like(table.as_slice())
-            .ok()
-            .and_then(|table| table.get(key))
-            .is_some()
-    }
+//     pub fn is_key_exist(&self, table: &TablePath, key: &str) -> bool {
+//         self.toml_manifest
+//             .get_table_like(table.as_slice())
+//             .ok()
+//             .and_then(|table| table.get(key))
+//             .is_some()
+//     }
 
-    pub fn is_key_inline_table(&self, table: &TablePath, key: &str) -> bool {
-        self.toml_manifest
-            .get_table_like(table.as_slice())
-            .ok()
-            .and_then(|table| table.get(key))
-            .is_some_and(Item::is_inline_table)
-    }
-}
+//     pub fn is_key_inline_table(&self, table: &TablePath, key: &str) -> bool {
+//         self.toml_manifest
+//             .get_table_like(table.as_slice())
+//             .ok()
+//             .and_then(|table| table.get(key))
+//             .is_some_and(Item::is_inline_table)
+//     }
+// }
 
 impl Manifest {
     pub fn get_array(&self, table: &TablePath, key: &str) -> CargoResult<&Array> {

@@ -1,8 +1,8 @@
 // This file contains code originally derived from cargo-edit and has been
 // modified and adapted for cargo-space.
 
-use crate::errors::{CargoResult, Context, error};
-use std::path::Path;
+use crate::errors::CargoResult;
+use crate::errors::error;
 
 pub type Item = toml_edit::Item;
 pub type Array = toml_edit::Array;
@@ -32,19 +32,9 @@ impl TomlManifest {
         }
     }
 
-    /// Loads and parses a TOML manifest from the specified path.
-    ///
-    /// Returns an error if the file cannot be read or if its contents
-    /// cannot be parsed as valid TOML.
-    pub fn from_manifest_path(manifest_path: &Path) -> CargoResult<Self> {
-        let content = std::fs::read_to_string(manifest_path)
-            .with_context(|| format!("failed to read {}", manifest_path.display()))?;
-
-        let data = content
-            .parse::<DocMut>()
-            .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
-
-        Ok(Self { data })
+    pub fn with_data(mut self, data: DocMut) -> Self {
+        self.data = data;
+        self
     }
 
     pub fn is_empty(&self) -> bool {
