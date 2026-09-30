@@ -22,7 +22,7 @@ fn workspace_dependencies() -> TablePath {
 }
 
 fn dependencies() -> TablePath {
-    TablePath::new().push("workspace").push("dependencies")
+    TablePath::new().push("dependencies")
 }
 
 #[test]
