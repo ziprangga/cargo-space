@@ -562,7 +562,7 @@ fn remove_key() {
 
     println!("AFTER:\n{}", manifest.data());
 
-    assert!(manifest.get_key(&table, "semver").is_err());
+    assert!(manifest.get_key(&table, "semver").is_none());
 }
 
 #[test]
@@ -1044,6 +1044,6 @@ fn remove_items_at_with_target() {
 
     println!("AFTER:\n{}", manifest.data());
 
-    assert!(manifest.get_key(&table, "semver").is_err());
-    assert!(manifest.get_key(&table, "anyhow").is_err());
+    assert!(manifest.get_key(&table, "semver").is_none());
+    assert!(manifest.get_key(&table, "anyhow").is_none());
 }

@@ -456,7 +456,7 @@ impl DepId {
                 path = path.push(part);
             }
 
-            if let Ok(item) = manifest.get_items_at(&path) {
+            if let Some(item) = manifest.get_items_at(&path) {
                 if let Some(table) = item.as_table_like() {
                     for (name, item) in table.iter() {
                         let mut dep = Self::new()
@@ -485,12 +485,9 @@ impl DepId {
                 path = path.push(part);
             }
 
-            let table = match manifest.get_items_at(&path) {
-                Ok(item) => match item.as_table_like() {
-                    Some(table) => table,
-                    None => continue,
-                },
-                Err(_) => continue,
+            let table = match manifest.get_items_at(&path).and_then(Item::as_table_like) {
+                Some(table) => table,
+                None => continue,
             };
 
             for (name, item) in table.iter() {
@@ -523,7 +520,7 @@ impl DepId {
 
         let target = TablePath::new().push("target");
 
-        if let Ok(item) = manifest.get_items_at(&target) {
+        if let Some(item) = manifest.get_items_at(&target) {
             if let Some(targets) = item.as_table_like() {
                 for (target_name, target_item) in targets.iter() {
                     let target_table = match target_item.as_table_like() {

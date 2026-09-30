@@ -69,11 +69,15 @@ impl InitCmd {
 
         if found_pkg_id {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
+
             let table_path = TablePath::new().push("package");
-            let pkg_items = space_manifest.get_items_at(&table_path)?.clone();
-            let pkg_dependencies = space_manifest
-                .get_items_at(&TablePath::new().push("dependencies"))?
-                .clone();
+
+            let pkg_id_items = space_manifest.get_items_at(&table_path).cloned();
+
+            let pkg_id_dependencies = space_manifest
+                .get_items_at(&TablePath::new().push("dependencies"))
+                .cloned();
+
             let pkg_name = ctx
                 .get_space()
                 .get_root_pkg_id()
@@ -81,7 +85,6 @@ impl InitCmd {
                 .get_name()
                 .to_owned();
 
-            let package_items = PackageItems::from_toml(&pkg_items);
             let space_item = workspace.to_toml();
 
             ctx.add_modifier(
@@ -93,51 +96,57 @@ impl InitCmd {
                 Target::space(),
             )?;
 
-            ctx.add_modifier(
-                Modifier::add_items_at(
-                    TablePath::new().push("workspace").push("package"),
-                    package_items.to_toml(),
-                    InheritMode::None,
-                ),
-                Target::space(),
-            )?;
+            if let Some(pkg_items) = pkg_id_items {
+                let package_items = PackageItems::from_toml(&pkg_items);
 
-            ctx.add_modifier(
-                Modifier::add_items_at(
-                    TablePath::new().push("workspace").push("dependencies"),
-                    pkg_dependencies.clone(),
-                    InheritMode::None,
-                ),
-                Target::space(),
-            )?;
+                ctx.add_modifier(
+                    Modifier::add_items_at(
+                        TablePath::new().push("workspace").push("package"),
+                        package_items.to_toml(),
+                        InheritMode::None,
+                    ),
+                    Target::space(),
+                )?;
 
-            ctx.add_modifier(
-                Modifier::update_items_at(
-                    TablePath::new().push("package"),
-                    package_items.to_toml(),
-                    InheritMode::Full,
-                ),
-                Target::space(),
-            )?;
+                ctx.add_modifier(
+                    Modifier::update_items_at(
+                        TablePath::new().push("package"),
+                        package_items.to_toml(),
+                        InheritMode::Full,
+                    ),
+                    Target::space(),
+                )?;
 
-            ctx.add_modifier(
-                Modifier::update_key(
-                    TablePath::new().push("package"),
-                    "name",
-                    pkg_name.into(),
-                    InheritMode::None,
-                ),
-                Target::space(),
-            )?;
+                ctx.add_modifier(
+                    Modifier::update_key(
+                        TablePath::new().push("package"),
+                        "name",
+                        pkg_name.into(),
+                        InheritMode::None,
+                    ),
+                    Target::space(),
+                )?;
+            }
 
-            ctx.add_modifier(
-                Modifier::update_items_at(
-                    TablePath::new().push("dependencies"),
-                    pkg_dependencies,
-                    InheritMode::Full,
-                ),
-                Target::space(),
-            )?;
+            if let Some(pkg_dependencies) = pkg_id_dependencies {
+                ctx.add_modifier(
+                    Modifier::add_items_at(
+                        TablePath::new().push("workspace").push("dependencies"),
+                        pkg_dependencies.clone(),
+                        InheritMode::None,
+                    ),
+                    Target::space(),
+                )?;
+
+                ctx.add_modifier(
+                    Modifier::update_items_at(
+                        TablePath::new().push("dependencies"),
+                        pkg_dependencies,
+                        InheritMode::Full,
+                    ),
+                    Target::space(),
+                )?;
+            }
         }
 
         if self.non_virtual && !found_pkg_id {
@@ -146,7 +155,12 @@ impl InitCmd {
             } else {
                 let space_manifest = ctx.get_space_mut().try_get_manifest()?;
                 let table_path = TablePath::new().push("workspace").push("package");
-                space_manifest.get_items_at(&table_path)?.clone()
+
+                if let Some(items) = space_manifest.get_items_at(&table_path).cloned() {
+                    items
+                } else {
+                    package_items.to_toml()
+                }
             };
 
             build_non_virtual_src(&path)?;

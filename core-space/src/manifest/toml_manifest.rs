@@ -69,11 +69,11 @@ impl TomlManifest {
     /// clap = { version = "0.1" }
     /// ```
     ///
-    /// Returns an error if any path segment does not exist or does not
+    /// Returns 'None" if any path segment does not exist or does not
     /// reference a table-like item.
     ///
     /// Array-of-tables are not traversed by this method.
-    pub fn get_table_like(&self, table_path: &[String]) -> CargoResult<&Item> {
+    pub fn get_table_like(&self, table_path: &[String]) -> Option<&Item> {
         Self::descent(self.data.as_item(), table_path)
     }
 
@@ -106,20 +106,16 @@ impl TomlManifest {
         Self::descent_or_create_mut(self.data.as_item_mut(), table_path)
     }
 
-    fn descent<'a>(mut item: &'a Item, sections: &[String]) -> CargoResult<&'a Item> {
+    fn descent<'a>(mut item: &'a Item, sections: &[String]) -> Option<&'a Item> {
         for section in sections {
-            item = item
-                .get(section)
-                .ok_or_else(|| error!("Table `{section}` could not be found"))?;
+            item = item.get(section)?;
 
             if !item.is_table_like() {
-                return Err(error!(
-                    "`{section}` is not a standard table or inline table"
-                ));
+                return None;
             }
         }
 
-        Ok(item)
+        Some(item)
     }
 
     fn descent_mut<'a>(mut item: &'a mut Item, sections: &[String]) -> CargoResult<&'a mut Item> {

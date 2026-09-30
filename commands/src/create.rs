@@ -123,16 +123,17 @@ impl CreatePkgCmd {
         } else {
             let space_manifest = ctx.get_space_mut().try_get_manifest()?;
             let table_path = TablePath::new().push("workspace").push("package");
-            let pkg_items = space_manifest.get_items_at(&table_path)?.clone();
 
-            ctx.add_modifier(
-                Modifier::add_items_at(
-                    TablePath::new().push("package"),
-                    pkg_items,
-                    InheritMode::Full,
-                ),
-                Target::pkg(pkg_name.clone()),
-            )?;
+            if let Some(pkg_items) = space_manifest.get_items_at(&table_path).cloned() {
+                ctx.add_modifier(
+                    Modifier::add_items_at(
+                        TablePath::new().push("package"),
+                        pkg_items,
+                        InheritMode::Full,
+                    ),
+                    Target::pkg(pkg_name.clone()),
+                )?;
+            }
         }
 
         let root_path = ctx.get_space().get_root_path();

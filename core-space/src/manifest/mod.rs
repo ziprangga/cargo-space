@@ -86,55 +86,13 @@ impl Manifest {
     }
 }
 
-// impl Manifest {
-//     pub fn is_table_exist(&self, table: &TablePath) -> bool {
-//         self.toml_manifest.get_table_like(table.as_slice()).is_ok()
-//     }
-
-//     pub fn is_table_inline_table(&self, table: &TablePath) -> bool {
-//         self.toml_manifest
-//             .get_table_like(table.as_slice())
-//             .ok()
-//             .is_some_and(|table| table.is_inline_table())
-//     }
-
-//     pub fn is_key_exist(&self, table: &TablePath, key: &str) -> bool {
-//         self.toml_manifest
-//             .get_table_like(table.as_slice())
-//             .ok()
-//             .and_then(|table| table.get(key))
-//             .is_some()
-//     }
-
-//     pub fn is_key_inline_table(&self, table: &TablePath, key: &str) -> bool {
-//         self.toml_manifest
-//             .get_table_like(table.as_slice())
-//             .ok()
-//             .and_then(|table| table.get(key))
-//             .is_some_and(Item::is_inline_table)
-//     }
-// }
-
 impl Manifest {
-    pub fn get_array(&self, table: &TablePath, key: &str) -> CargoResult<&Array> {
-        let item = self.toml_manifest.get_table_like(table.as_slice())?;
-
-        item.get(key)
+    pub fn get_array(&self, table: &TablePath, key: &str) -> Option<&Array> {
+        self.toml_manifest
+            .get_table_like(table.as_slice())
+            .and_then(|item| item.get(key))
             .and_then(Item::as_array)
-            .ok_or_else(|| error!("`{key}` is not an array"))
     }
-    // pub fn get_array(&self, table: &TablePath, key: &str) -> Option<&Array> {
-    //     let item = match self.toml_manifest.get_table_like(table.as_slice()) {
-    //         Ok(item) => item,
-    //         Err(err) => {
-    //             // `err` is the original low-level error.
-    //             eprintln!("{err}");
-    //             return None;
-    //         }
-    //     };
-
-    //     item.get(key).and_then(Item::as_array)
-    // }
 
     pub fn add_value_to_array(
         &mut self,
@@ -269,11 +227,10 @@ impl Manifest {
     }
 
     // ===============================================
-    pub fn get_key(&self, table: &TablePath, key: &str) -> CargoResult<&Item> {
-        let item = self.toml_manifest.get_table_like(table.as_slice())?;
-
-        item.get(key)
-            .ok_or_else(|| error!("`{key}` could not be found"))
+    pub fn get_key(&self, table: &TablePath, key: &str) -> Option<&Item> {
+        self.toml_manifest
+            .get_table_like(table.as_slice())
+            .and_then(|item| item.get(key))
     }
 
     pub fn add_key(
@@ -382,13 +339,8 @@ impl Manifest {
     }
 
     // ===============================================
-    pub fn get_items_at(&self, table: &TablePath) -> CargoResult<&Item> {
-        let item = self
-            .toml_manifest
-            .get_table_like(table.as_slice())
-            .with_context(|| format!("Item of `{}` could not be found", table))?;
-
-        Ok(item)
+    pub fn get_items_at(&self, table: &TablePath) -> Option<&Item> {
+        self.toml_manifest.get_table_like(table.as_slice())
     }
 
     pub fn add_items_at(
