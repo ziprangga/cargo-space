@@ -45,7 +45,7 @@ fn get_array() {
 
     println!("Getter:\n{}", array);
 
-    assert_eq!(array.len(), 2);
+    assert_eq!(array.len(), 3);
     assert_eq!(array.get(0).and_then(Value::as_str), Some("app"));
     assert_eq!(array.get(1).and_then(Value::as_str), Some("lib"));
 }
