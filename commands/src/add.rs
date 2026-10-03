@@ -41,13 +41,27 @@ impl AddCmd {
         if let Some(pkg) = &self.package {
             let inherit_mode = match &self.private {
                 RulesInherit::Choose(_) => InheritMode::Partial,
-                RulesInherit::All => InheritMode::Full,
-                RulesInherit::None => InheritMode::None,
+                RulesInherit::All => InheritMode::None,
+                RulesInherit::None => InheritMode::Full,
+            };
+
+            let pkg_manifest_path = {
+                let pkg_id = ctx.get_pkg_id_mut(pkg)?;
+                pkg_id.get_manifest_path().to_path_buf()
             };
 
             if let Some(item) = dep_from_space(&mut ctx, crate_name)? {
                 let dependency = Dependency::from_toml(crate_name, &item);
-                if let Some(dep) = dependency {
+
+                if let Some(mut dep) = dependency {
+                    if let Some(features) = &self.dep_cmd.features {
+                        dep = dep.with_features(features.clone());
+                    }
+
+                    if let Some(optional) = self.dep_cmd.optional {
+                        dep = dep.with_optional(optional);
+                    }
+
                     let (space_dep_item, pkg_dep_item) = inherit_split(self.private.clone(), &dep)?;
                     if let Some(pkg_item) = pkg_dep_item {
                         let pkg_item_inline =
@@ -59,6 +73,16 @@ impl AddCmd {
                                 crate_name,
                                 pkg_item_inline,
                                 inherit_mode,
+                            ),
+                            Target::pkg(pkg),
+                        )?;
+                    } else {
+                        ctx.add_modifier(
+                            Modifier::add_key(
+                                pkg_dep_table.clone(),
+                                crate_name,
+                                dep.to_toml(),
+                                InheritMode::Full,
                             ),
                             Target::pkg(pkg),
                         )?;
@@ -77,9 +101,7 @@ impl AddCmd {
                     }
                 }
             } else {
-                let pkg_id = ctx.get_pkg_id_mut(pkg)?;
-                let pkg_manifest_path = pkg_id.get_manifest_path();
-                let dependency = self.dep_cmd.to_dependency(pkg_manifest_path)?;
+                let dependency = self.dep_cmd.to_dependency(&pkg_manifest_path)?;
                 let (space_dep_item, pkg_dep_item) =
                     inherit_split(self.private.clone(), &dependency)?;
 
@@ -93,6 +115,16 @@ impl AddCmd {
                             crate_name,
                             pkg_item_inline,
                             inherit_mode,
+                        ),
+                        Target::pkg(pkg),
+                    )?;
+                } else {
+                    ctx.add_modifier(
+                        Modifier::add_key(
+                            pkg_dep_table.clone(),
+                            crate_name,
+                            dependency.to_toml(),
+                            InheritMode::Full,
                         ),
                         Target::pkg(pkg),
                     )?;
@@ -231,7 +263,10 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
         .get_many::<String>("features")
         .map(|values| values.cloned().collect());
 
-    let optional = args.get_one::<bool>("optional").copied();
+    let optional = args
+        .get_one::<bool>("optional")
+        .copied()
+        .filter(|optional| *optional);
 
     let package = args.get_one::<String>("package").cloned();
 
@@ -272,4 +307,221 @@ pub fn exec_add(args: &ArgMatches) -> CargoResult<()> {
     };
 
     cmd.run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::sync::Mutex;
+    use tempfile::tempdir;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn setup_workspace() -> tempfile::TempDir {
+        let dir = tempdir().unwrap();
+
+        fs::create_dir_all(dir.path().join("app/src")).unwrap();
+        fs::create_dir_all(dir.path().join("dep/src")).unwrap();
+
+        fs::write(
+            dir.path().join("Cargo.toml"),
+            r#"
+[workspace]
+resolver = "3"
+members = ["app", "dep"]
+
+[workspace.dependencies]
+semver = "1.0"
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("app/Cargo.toml"),
+            r#"
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+"#,
+        )
+        .unwrap();
+
+        fs::write(
+            dir.path().join("dep/Cargo.toml"),
+            r#"
+[package]
+name = "dep"
+version = "0.1.0"
+edition = "2024"
+"#,
+        )
+        .unwrap();
+
+        fs::write(dir.path().join("app/src/main.rs"), "fn main() {}\n").unwrap();
+        fs::write(dir.path().join("dep/src/lib.rs"), "pub fn test() {}\n").unwrap();
+
+        dir
+    }
+
+    fn print_workspace_files(workspace: &tempfile::TempDir, label: &str) {
+        println!("\n========== {label} ==========");
+
+        let root_manifest = workspace.path().join("Cargo.toml");
+
+        println!("\n--- Cargo.toml ---");
+        println!("{}", fs::read_to_string(root_manifest).unwrap());
+
+        if let Ok(entries) = fs::read_dir(workspace.path()) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+
+                if path.is_dir() {
+                    let manifest = path.join("Cargo.toml");
+
+                    if manifest.exists() {
+                        println!("\n--- {} ---", manifest.display());
+                        println!("{}", fs::read_to_string(manifest).unwrap());
+
+                        let src = path.join("src");
+
+                        if let Ok(source_entries) = fs::read_dir(src) {
+                            for source_entry in source_entries.flatten() {
+                                let source_path = source_entry.path();
+
+                                if source_path.is_file() {
+                                    println!("\n--- {} ---", source_path.display());
+                                    println!("{}", fs::read_to_string(source_path).unwrap());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        println!("\n========== END {label} ==========\n");
+    }
+
+    fn run_add(workspace: &tempfile::TempDir, args: &[&str]) -> CargoResult<()> {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
+        let current_dir = std::env::current_dir()?;
+        std::env::set_current_dir(workspace.path())?;
+
+        let result = {
+            let matches = cli_add()
+                .try_get_matches_from(std::iter::once("add").chain(args.iter().copied()))
+                .unwrap();
+
+            exec_add(&matches)
+        };
+
+        std::env::set_current_dir(current_dir)?;
+
+        result
+    }
+
+    #[test]
+    fn add_dependency_to_workspace() {
+        let workspace = setup_workspace();
+
+        run_add(&workspace, &["serde"]).unwrap();
+
+        let manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        assert!(manifest.contains("[workspace.dependencies]"));
+        assert!(manifest.contains("serde"));
+    }
+
+    #[test]
+    fn add_dependency_to_package() {
+        let workspace = setup_workspace();
+
+        print_workspace_files(&workspace, "BEFORE");
+
+        run_add(&workspace, &["serde", "-p", "app"]).unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        let app_manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("[workspace.dependencies]"));
+        assert!(root_manifest.contains("serde"));
+
+        assert!(app_manifest.contains("[dependencies]"));
+        assert!(app_manifest.contains("serde"));
+        assert!(app_manifest.contains("workspace"));
+    }
+
+    #[test]
+    fn add_dependency_to_package_with_features() {
+        let workspace = setup_workspace();
+
+        print_workspace_files(&workspace, "BEFORE");
+
+        run_add(
+            &workspace,
+            &[
+                "serde",
+                "-p",
+                "app",
+                "--features",
+                "derive",
+                "--private",
+                "features",
+            ],
+        )
+        .unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        let app_manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("[workspace.dependencies]"));
+        assert!(root_manifest.contains("serde"));
+
+        assert!(app_manifest.contains("[dependencies]"));
+        assert!(app_manifest.contains("serde"));
+        assert!(app_manifest.contains("features"));
+    }
+
+    #[test]
+    fn add_dependency_from_workspace_to_package() {
+        let workspace = setup_workspace();
+
+        print_workspace_files(&workspace, "BEFORE");
+
+        run_add(
+            &workspace,
+            &[
+                "semver",
+                "-p",
+                "app",
+                "--features",
+                "serde",
+                "--private",
+                "features",
+            ],
+        )
+        .unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
+
+        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
+
+        let app_manifest = fs::read_to_string(workspace.path().join("app/Cargo.toml")).unwrap();
+
+        assert!(root_manifest.contains("[workspace.dependencies]"));
+        assert!(root_manifest.contains("semver"));
+
+        assert!(app_manifest.contains("[dependencies]"));
+        assert!(app_manifest.contains("semver"));
+        assert!(app_manifest.contains("features"));
+    }
 }

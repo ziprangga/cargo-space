@@ -13,7 +13,6 @@ use core_space::context::Writer;
 use core_space::manifest::InheritMode;
 use core_space::manifest::Manifest;
 use core_space::manifest::TablePath;
-use core_space::manifest::into_item;
 
 use crate::new::build_non_virtual_src;
 use crate::new::build_pkg_items;
@@ -169,7 +168,7 @@ impl InitCmd {
                 Modifier::add_key(
                     TablePath::new().push("package"),
                     "name",
-                    into_item(name),
+                    name.into(),
                     InheritMode::None,
                 ),
                 Target::space(),
@@ -182,7 +181,7 @@ impl InitCmd {
                     InheritMode::Full,
                 ),
                 Target::Space,
-            )?
+            )?;
         }
 
         ctx.apply()?;
@@ -196,7 +195,7 @@ impl InitCmd {
 
 pub fn cli_init() -> Command {
     Command::new("init")
-        .about("Initial the Cargo Workspace at current directory")
+        .about("Initialize the Cargo Workspace at current directory")
         .arg(Arg::new("path").value_name("PATH").action(ArgAction::Set))
         .arg(
             Arg::new("non-vcs")
@@ -239,7 +238,23 @@ pub fn exec_init(args: &ArgMatches) -> CargoResult<()> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn with_current_dir<T>(path: &std::path::Path, f: impl FnOnce() -> T) -> T {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
+        let old_dir = std::env::current_dir().unwrap();
+        std::env::set_current_dir(path).unwrap();
+
+        let result = f();
+
+        std::env::set_current_dir(old_dir).unwrap();
+
+        result
+    }
 
     #[test]
     fn init_virtual_workspace_at_path() {
@@ -298,18 +313,15 @@ mod tests {
     fn init_without_path_uses_current_directory() {
         let dir = tempdir().unwrap();
 
-        let old_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
+        let result = with_current_dir(dir.path(), || {
+            let opts = InitCmd {
+                path: None,
+                non_vcs: true,
+                non_virtual: false,
+            };
 
-        let opts = InitCmd {
-            path: None,
-            non_vcs: true,
-            non_virtual: false,
-        };
-
-        let result = opts.run();
-
-        std::env::set_current_dir(old_dir).unwrap();
+            opts.run()
+        });
 
         result.unwrap();
 
@@ -328,18 +340,15 @@ mod tests {
         let path = root.path().join("workspace");
         fs::create_dir_all(&path).unwrap();
 
-        let old_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(root.path()).unwrap();
+        let result = with_current_dir(root.path(), || {
+            let cmd = InitCmd {
+                path: Some(PathBuf::from("workspace")),
+                non_vcs: true,
+                non_virtual: false,
+            };
 
-        let cmd = InitCmd {
-            path: Some(PathBuf::from("workspace")),
-            non_vcs: true,
-            non_virtual: false,
-        };
-
-        let result = cmd.run();
-
-        std::env::set_current_dir(old_dir).unwrap();
+            cmd.run()
+        });
 
         result.unwrap();
 
@@ -376,19 +385,18 @@ mod tests {
         )
         .unwrap();
 
-        let old_dir = std::env::current_dir().unwrap();
-        std::env::set_current_dir(dir.path()).unwrap();
+        let (result, ctx) = with_current_dir(dir.path(), || {
+            let result = InitCmd {
+                path: None,
+                non_vcs: true,
+                non_virtual: true,
+            }
+            .run();
 
-        let result = InitCmd {
-            path: None,
-            non_vcs: true,
-            non_virtual: true,
-        }
-        .run();
+            let ctx = Context::discover();
 
-        let ctx = Context::discover();
-
-        std::env::set_current_dir(old_dir).unwrap();
+            (result, ctx)
+        });
 
         println!("result:\n{result:#?}");
         println!("Context:\n{ctx:#?}");

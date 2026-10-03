@@ -53,7 +53,7 @@ impl InheritMode {
         }
     }
 
-    pub fn resolve_items(&self, item: Item) -> CargoResult<Item> {
+    pub fn resolve_items_table(&self, item: Item) -> CargoResult<Item> {
         match self {
             Self::Full => {
                 let Some(table_like) = item.as_table_like() else {

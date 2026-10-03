@@ -24,7 +24,6 @@ pub use toml_manifest::Value;
 pub use man_util::into_inline_table;
 pub use man_util::into_inline_table_item;
 pub use man_util::into_inline_table_item_if;
-pub use man_util::into_item;
 
 use crate::errors::{CargoResult, Context, error};
 use std::path::{Path, PathBuf};
@@ -98,15 +97,11 @@ impl Manifest {
         &mut self,
         table: &TablePath,
         key: &str,
-        value: &Item,
+        value: &Value,
     ) -> CargoResult<()> {
         let base_table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
-
-        let value = value
-            .as_value()
-            .ok_or_else(|| error!("Value is not a value"))?;
 
         let target_item_exist = base_table.get(key).is_some();
 
@@ -143,8 +138,8 @@ impl Manifest {
         &mut self,
         table: &TablePath,
         key: &str,
-        old_value: Option<&Item>,
-        value: &Item,
+        old_value: Option<&Value>,
+        new_value: &Value,
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
@@ -156,32 +151,28 @@ impl Manifest {
             .as_array_mut()
             .ok_or_else(|| error!("`{key}` is not an array"))?;
 
-        let source_value = value
-            .as_value()
-            .ok_or_else(|| error!("`{key}` value is not a value"))?;
-
         let trailing_comma = target_array.trailing_comma();
 
-        if let Some(old_value) = old_value.and_then(Item::as_value) {
+        if let Some(old_value) = old_value {
             let index = target_array
                 .iter()
                 .position(|item| item.as_str() == old_value.as_str());
 
             if let Some(idx) = index {
-                target_array.replace(idx, source_value.clone());
+                target_array.replace(idx, new_value.clone());
             }
         } else {
             if trailing_comma {
                 let trailing = target_array.trailing().clone();
 
-                let mut new_value = source_value.clone();
+                let mut new_value_mut = new_value.clone();
 
-                new_value.decor_mut().set_prefix(trailing);
-                target_array.push_formatted(new_value);
+                new_value_mut.decor_mut().set_prefix(trailing);
+                target_array.push_formatted(new_value_mut);
 
                 target_array.set_trailing("\n");
             } else {
-                target_array.push_formatted(source_value.clone());
+                target_array.push_formatted(new_value.clone());
             }
         }
 
@@ -192,7 +183,7 @@ impl Manifest {
         &mut self,
         table: &TablePath,
         key: &str,
-        value: &Item,
+        target_value: &Value,
     ) -> CargoResult<()> {
         let table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
@@ -204,14 +195,9 @@ impl Manifest {
             .as_array_mut()
             .ok_or_else(|| error!("`{key}` is not an array"))?;
 
-        let target_value = value
-            .as_value()
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| error!("Value is not a string"))?;
-
         let index = target_array
             .iter()
-            .position(|item| item.as_str() == Some(target_value));
+            .position(|value| value.as_str() == target_value.as_str());
 
         if let Some(idx) = index {
             if let Some(v) = target_array.get_mut(idx + 1) {
@@ -237,7 +223,7 @@ impl Manifest {
         &mut self,
         table: &TablePath,
         key: &str,
-        value: &Item,
+        item: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
         let base_table = self
@@ -248,7 +234,7 @@ impl Manifest {
             return Ok(());
         }
 
-        let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
+        let source_item = inherit_mode.resolve_key(key.to_string(), item.clone())?;
 
         if !inherit_mode.is_none() {
             let source_table = source_item
@@ -273,12 +259,12 @@ impl Manifest {
         &mut self,
         table: &TablePath,
         key: &str,
-        value: &Item,
+        item: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        let source_item = inherit_mode.resolve_key(key.to_string(), value.clone())?;
+        let source_item = inherit_mode.resolve_key(key.to_string(), item.clone())?;
 
         let target_item = base_table
             .get_mut(key)
@@ -346,14 +332,14 @@ impl Manifest {
     pub fn add_items_at(
         &mut self,
         table: &TablePath,
-        value: &Item,
+        items_table: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
         let base_table = self
             .toml_manifest
             .get_or_create_table_like_mut(table.as_slice())?;
 
-        let source_item = inherit_mode.resolve_items(value.clone())?;
+        let source_item = inherit_mode.resolve_items_table(items_table.clone())?;
 
         let table_like_source = source_item
             .as_table_like()
@@ -362,9 +348,9 @@ impl Manifest {
         if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
                 // Handle Inline Table: Merge inside the curly braces `{ ... }`
-                for (key, value) in table_like_source.iter() {
+                for (key, item) in table_like_source.iter() {
                     if inline_table.get(key).is_none() {
-                        if let Some(value) = value.as_value() {
+                        if let Some(value) = item.as_value() {
                             inline_table.insert(key, value.clone());
                         }
                     }
@@ -372,9 +358,9 @@ impl Manifest {
             }
         } else if let Some(target_table) = base_table.as_table_mut() {
             // Handle Standard Table: Merge fields cleanly
-            for (key, value) in table_like_source.iter() {
+            for (key, item) in table_like_source.iter() {
                 if target_table.get(key).is_none() {
-                    target_table.insert(key, value.clone());
+                    target_table.insert(key, item.clone());
                 }
             }
         } else {
@@ -387,12 +373,12 @@ impl Manifest {
     pub fn update_items_at(
         &mut self,
         table: &TablePath,
-        value: &Item,
+        items_table: &Item,
         inherit_mode: &InheritMode,
     ) -> CargoResult<()> {
         let base_table = self.toml_manifest.get_table_like_mut(table.as_slice())?;
 
-        let source_item = inherit_mode.resolve_items(value.clone())?;
+        let source_item = inherit_mode.resolve_items_table(items_table.clone())?;
 
         let table_like_source = source_item
             .as_table_like()
@@ -400,8 +386,8 @@ impl Manifest {
 
         if let Some(old_value) = base_table.as_value_mut() {
             if let Some(inline_table) = old_value.as_inline_table_mut() {
-                for (key, value) in table_like_source.iter() {
-                    if let Some(new_value) = value.as_value() {
+                for (key, item) in table_like_source.iter() {
+                    if let Some(new_value) = item.as_value() {
                         if let Some(old_value) = inline_table.get(key) {
                             let decor = old_value.decor().clone();
                             let mut new_value = new_value.clone();
@@ -414,15 +400,15 @@ impl Manifest {
                 }
             }
         } else if let Some(target_table) = base_table.as_table_mut() {
-            for (key, value) in table_like_source.iter() {
-                if let Some(old_value) = target_table.get(key) {
-                    let decor = match old_value {
+            for (key, item) in table_like_source.iter() {
+                if let Some(old_item) = target_table.get(key) {
+                    let decor = match old_item {
                         Item::Value(value) => value.decor().clone(),
                         Item::Table(table) => table.decor().clone(),
                         _ => Default::default(),
                     };
 
-                    let mut new_value = value.clone();
+                    let mut new_value = item.clone();
 
                     match &mut new_value {
                         Item::Value(value) => *value.decor_mut() = decor,
@@ -444,7 +430,7 @@ impl Manifest {
 
                     target_table.insert(key, new_value);
                 } else {
-                    target_table.insert(key, value.clone());
+                    target_table.insert(key, item.clone());
                 }
             }
         } else {

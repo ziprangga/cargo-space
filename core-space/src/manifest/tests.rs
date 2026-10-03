@@ -84,7 +84,7 @@ fn add_value_to_array_with_key_non_exist() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let value = Item::Value(Value::from("app"));
+    let value = Value::from("app");
 
     manifest
         .add_value_to_array(&table, "members", &value)
@@ -109,7 +109,7 @@ fn add_value_to_array_with_key_exist_horizontal() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let value = Item::Value(Value::from("other"));
+    let value = Value::from("other");
 
     manifest
         .add_value_to_array(&table, "members", &value)
@@ -141,7 +141,7 @@ fn add_value_to_array_with_key_exist_vertical() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let value = Item::Value(Value::from("other"));
+    let value = Value::from("other");
 
     manifest
         .add_value_to_array(&table, "members", &value)
@@ -174,8 +174,8 @@ fn update_value_of_array_replace_old() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let old_value = Item::Value(Value::from("other"));
-    let new_value = Item::Value(Value::from("test"));
+    let old_value = Value::from("other");
+    let new_value = Value::from("test");
 
     manifest
         .update_value_of_array(&table, "members", Some(&old_value), &new_value)
@@ -212,7 +212,7 @@ fn update_value_of_array_append_new() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let new_value = Item::Value(Value::from("test"));
+    let new_value = Value::from("test");
 
     manifest
         .update_value_of_array(&table, "members", None, &new_value)
@@ -248,7 +248,7 @@ fn remove_value_from_array() {
     println!("BEFORE:\n{}", manifest.data());
 
     let table = workspace();
-    let value = Item::Value(Value::from("app"));
+    let value = Value::from("app");
 
     manifest
         .remove_value_from_array(&table, "members", &value)

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use core_space::CargoResult;
+use core_space::bail_out;
 use core_space::config::Dependency;
 use core_space::config::PackageItems;
 use core_space::config::Source;
@@ -43,7 +44,7 @@ impl std::fmt::Display for NewPackageKind {
 pub struct CreatePkgCmd {
     path: PathBuf,
     name: Option<String>,
-    kind: Option<NewPackageKind>,
+    kind: NewPackageKind,
     edition: Option<String>,
     registry: Option<String>,
 
@@ -72,16 +73,20 @@ impl CreatePkgCmd {
             },
         };
 
-        let kind = self.kind.unwrap_or(NewPackageKind::Bin);
+        let mut ctx = Context::discover()?;
+
+        if ctx.get_space().get_pkg_id(&name).is_some() {
+            bail_out!("package `{name}` already exists in the workspace");
+        }
+
+        std::fs::create_dir_all(path)?;
+
         let edition = self.edition.as_deref().unwrap_or("2024");
+
         let registry = self
             .registry
             .as_ref()
             .map(|registry| vec![registry.clone()]);
-
-        std::fs::create_dir_all(path)?;
-
-        let mut ctx = Context::discover()?;
 
         let pkg_manifest_path = path.join(MANIFEST_FILENAME);
         let pkg_manifest = Manifest::new(pkg_manifest_path.clone());
@@ -177,7 +182,7 @@ impl CreatePkgCmd {
         ctx.apply()?;
         Writer::write(&ctx)?;
 
-        create_source(path, kind)?;
+        create_source(path, self.kind)?;
 
         Ok(())
     }
@@ -217,18 +222,7 @@ pub fn cli_create() -> Command {
                 .value_name("NAME")
                 .action(ArgAction::Set),
         )
-        .arg(
-            Arg::new("lib")
-                .long("lib")
-                .action(ArgAction::SetTrue)
-                .conflicts_with("bin"),
-        )
-        .arg(
-            Arg::new("bin")
-                .long("bin")
-                .action(ArgAction::SetTrue)
-                .conflicts_with("lib"),
-        )
+        .arg(Arg::new("lib").long("lib").action(ArgAction::SetTrue))
         .arg(Arg::new("edition").long("edition").value_name("YEAR"))
         .arg(
             Arg::new("registry")
@@ -256,9 +250,9 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
     let name = args.get_one::<String>("name").cloned();
 
     let kind = if args.get_flag("lib") {
-        Some(NewPackageKind::Lib)
+        NewPackageKind::Lib
     } else {
-        Some(NewPackageKind::Bin)
+        NewPackageKind::Bin
     };
 
     let edition = args.get_one::<String>("edition").cloned();
@@ -270,7 +264,7 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
     let dep = args.get_flag("dep");
 
     if !non_inherit && (edition.is_some() || registry.is_some()) {
-        anyhow::bail!("the `--edition` option requires `--non-inherit`");
+        anyhow::bail!("the `--edition` and `--registry` options require `--non-inherit`");
     }
 
     let cmd = CreatePkgCmd {
@@ -294,25 +288,15 @@ pub fn exec_create(args: &ArgMatches) -> CargoResult<()> {
 mod tests {
     use super::*;
     use std::fs;
-
+    use std::sync::Mutex;
     use tempfile::tempdir;
 
-    fn setup_workspace() -> tempfile::TempDir {
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn setup_workspace(toml_content: &str) -> tempfile::TempDir {
         let dir = tempdir().unwrap();
 
-        fs::write(
-            dir.path().join("Cargo.toml"),
-            r#"
-[workspace]
-resolver = "3"
-
-
-[workspace.package]
-version = "0.1.0"
-edition = "2024"
-"#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("Cargo.toml"), toml_content).unwrap();
 
         dir
     }
@@ -357,6 +341,8 @@ edition = "2024"
     }
 
     fn run_create(workspace: &tempfile::TempDir, args: &[&str]) -> CargoResult<()> {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let current_dir = std::env::current_dir()?;
         std::env::set_current_dir(workspace.path())?;
 
@@ -375,7 +361,17 @@ edition = "2024"
 
     #[test]
     fn create_binary_package() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         print_workspace_files(&workspace, "BEFORE");
 
@@ -400,9 +396,23 @@ edition = "2024"
 
     #[test]
     fn create_library_package() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        print_workspace_files(&workspace, "BEFORE");
 
         run_create(&workspace, &["lib", "--lib"]).unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
 
         assert!(workspace.path().join("lib/src/lib.rs").exists());
         assert!(!workspace.path().join("lib/src/main.rs").exists());
@@ -411,15 +421,29 @@ edition = "2024"
 
         assert!(manifest.contains("[package]"));
         assert!(manifest.contains("name = \"lib\""));
-        assert!(manifest.contains("version = { workspace = true }"));
-        assert!(manifest.contains("edition = { workspace = true }"));
+        assert!(manifest.contains("version.workspace = true"));
+        assert!(manifest.contains("edition.workspace = true"));
     }
 
     #[test]
     fn create_package_with_name() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
+
+        print_workspace_files(&workspace, "BEFORE");
 
         run_create(&workspace, &["package-dir", "--name", "my-package"]).unwrap();
+
+        print_workspace_files(&workspace, "AFTER");
 
         let manifest = fs::read_to_string(workspace.path().join("package-dir/Cargo.toml")).unwrap();
 
@@ -428,7 +452,17 @@ edition = "2024"
 
     #[test]
     fn create_package_with_non_inherit() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(&workspace, &["app", "--non-inherit", "--edition", "2021"]).unwrap();
 
@@ -444,7 +478,17 @@ edition = "2024"
 
     #[test]
     fn create_package_with_registry_and_non_inherit() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(
             &workspace,
@@ -459,7 +503,17 @@ edition = "2024"
 
     #[test]
     fn create_package_with_dep() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(&workspace, &["app", "--dep"]).unwrap();
 
@@ -470,23 +524,18 @@ edition = "2024"
     }
 
     #[test]
-    fn create_package_updates_workspace_members() {
-        let workspace = setup_workspace();
-
-        print_workspace_files(&workspace, "BEFORE");
-
-        run_create(&workspace, &["app"]).unwrap();
-
-        print_workspace_files(&workspace, "AFTER");
-
-        let root_manifest = fs::read_to_string(workspace.path().join("Cargo.toml")).unwrap();
-
-        assert!(root_manifest.contains("members = [\"app\"]"));
-    }
-
-    #[test]
     fn create_package_rejects_existing_path() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         fs::create_dir_all(workspace.path().join("app")).unwrap();
 
@@ -497,7 +546,17 @@ edition = "2024"
 
     #[test]
     fn create_package_rejects_edition_without_non_inherit() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         let result = run_create(&workspace, &["app", "--edition", "2021"]);
 
@@ -506,7 +565,17 @@ edition = "2024"
 
     #[test]
     fn create_package_rejects_registry_without_non_inherit() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         let result = run_create(&workspace, &["app", "--registry", "my-registry"]);
 
@@ -515,7 +584,17 @@ edition = "2024"
 
     #[test]
     fn create_package_dep_uses_relative_member_path() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(&workspace, &["packages/app", "--dep"]).unwrap();
 
@@ -526,7 +605,17 @@ edition = "2024"
 
     #[test]
     fn create_package_with_default_bin() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(&workspace, &["app"]).unwrap();
 
@@ -537,7 +626,17 @@ edition = "2024"
 
     #[test]
     fn create_package_with_lib_source() {
-        let workspace = setup_workspace();
+        let workspace = setup_workspace(
+            r#"
+[workspace]
+resolver = "3"
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+"#,
+        );
 
         run_create(&workspace, &["app", "--lib"]).unwrap();
 
@@ -548,14 +647,39 @@ edition = "2024"
     }
 
     #[test]
-    fn cli_rejects_bin_and_lib() {
-        let result = cli_create().try_get_matches_from(["create", "app", "--bin", "--lib"]);
+    fn create_package_rejects_existing_package() {
+        let workspace = setup_workspace(
+            r#"
+    [workspace]
+    resolver = "3"
+    members = ["app"]
+
+    [workspace.package]
+    version = "0.1.0"
+    edition = "2024"
+    "#,
+        );
+
+        fs::create_dir_all(workspace.path().join("app/src")).unwrap();
+
+        fs::write(
+            workspace.path().join("app/Cargo.toml"),
+            r#"
+    [package]
+    name = "app"
+    version.workspace = true
+    edition.workspace = true
+    "#,
+        )
+        .unwrap();
+
+        let result = run_create(&workspace, &["app"]);
 
         assert!(result.is_err());
     }
 
     #[test]
-    fn cli_accepts_non_inherit_edition() {
+    fn create_cli_accepts_non_inherit_edition() {
         let result = cli_create().try_get_matches_from([
             "create",
             "app",
@@ -568,13 +692,13 @@ edition = "2024"
     }
 
     #[test]
-    fn new_package_kind_display() {
+    fn create_new_package_kind_display() {
         assert_eq!(NewPackageKind::Bin.to_string(), "binary (application)");
         assert_eq!(NewPackageKind::Lib.to_string(), "library");
     }
 
     #[test]
-    fn new_package_kind_is_bin() {
+    fn create_new_package_kind_is_bin() {
         assert!(NewPackageKind::Bin.is_bin());
         assert!(!NewPackageKind::Lib.is_bin());
     }

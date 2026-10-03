@@ -200,7 +200,10 @@ pub fn exec_remove(args: &ArgMatches) -> CargoResult<()> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     fn setup_workspace() -> tempfile::TempDir {
         let dir = tempdir().unwrap();
@@ -240,6 +243,8 @@ tokio = { workspace = true }
 
     #[test]
     fn remove_multiple_dependencies() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let dir = setup_workspace();
         let old_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
@@ -282,6 +287,8 @@ tokio = { workspace = true }
 
     #[test]
     fn remove_nonexistent_dependencies() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let dir = setup_workspace();
         let old_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
@@ -324,6 +331,8 @@ tokio = { workspace = true }
 
     #[test]
     fn remove_dependencies_in_package() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let dir = setup_workspace();
         let old_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(dir.path()).unwrap();
